@@ -13,17 +13,19 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            $table->uuid('uuid')->unique();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
+            $table->string('password')->nullable(); // nullable: social-only users
+            $table->string('account_type', 20)->default('customer');
+            $table->boolean('onboarding_completed')->default(false);
             $table->rememberToken();
             $table->timestamps();
+            $table->softDeletes();
         });
-
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();
-            $table->string('token');
+            $table->string('token'); // hashed
             $table->timestamp('created_at')->nullable();
         });
 
