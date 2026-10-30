@@ -44,6 +44,11 @@ export default function ForgotPasswordPage() {
         <Button type="submit" size="lg" loading={isPending} className="w-full">
           Send reset instructions
         </Button>
+        <p className="text-xs text-ink-500 text-center pt-1">
+  If you signed up with Google or Facebook, we&apos;ll email you a
+  &ldquo;Set your password&rdquo; link instead. Social login still works as
+  usual.
+</p>
       </form>
     </AuthCard>
   );

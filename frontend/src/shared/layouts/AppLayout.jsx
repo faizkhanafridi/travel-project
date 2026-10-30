@@ -1,10 +1,10 @@
-import { Link, Outlet, useNavigate } from 'react-router-dom';
-import { LogOut, User, Settings } from 'lucide-react';
-import Logo from '../components/Logo';
-import Button from '../components/Button';
-import useAuthStore from '../stores/authStore';
-import { useLogout } from '../../modules/auth/hooks/useLogout';
-import { useState } from 'react';
+import { Link, Outlet, useNavigate } from "react-router-dom";
+import { LogOut, User, Settings } from "lucide-react";
+import Logo from "../components/Logo";
+import Button from "../components/Button";
+import useAuthStore from "../stores/authStore";
+import { useLogout } from "../../modules/auth/hooks/useLogout";
+import { useState } from "react";
 
 export default function AppLayout() {
   const user = useAuthStore((s) => s.user);
@@ -12,12 +12,12 @@ export default function AppLayout() {
   const logout = useLogout();
   const navigate = useNavigate();
 
-  const isApprovedAgent = user?.roles?.includes('agent');
+  const isApprovedAgent = user?.roles?.includes("agent");
 
   const handleLogout = async () => {
     setMenuOpen(false);
     await logout.mutateAsync().catch(() => null);
-    navigate('/login', { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -33,7 +33,7 @@ export default function AppLayout() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate('/become-agent')}
+                onClick={() => navigate("/become-agent")}
               >
                 Become an Agent
               </Button>
@@ -45,7 +45,7 @@ export default function AppLayout() {
                 className="flex items-center gap-2 rounded-full border border-ink-200 pl-1 pr-2 py-1 hover:border-ink-300 focus-ring"
               >
                 <span className="grid place-items-center h-8 w-8 rounded-full bg-primary text-white text-sm font-semibold">
-                  {(user?.email || 'U').slice(0, 1).toUpperCase()}
+                  {(user?.email || "U").slice(0, 1).toUpperCase()}
                 </span>
               </button>
 
@@ -61,27 +61,28 @@ export default function AppLayout() {
                         {user?.email}
                       </p>
                       <p className="text-xs text-ink-500 capitalize">
-                        {user?.account_type?.replace('_', ' ')}
+                        {user?.account_type?.replace("_", " ")}
                       </p>
                     </div>
                     <button
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
                       onClick={() => {
                         setMenuOpen(false);
-                        navigate('/profile-setup');
+                        navigate("/profile");
                       }}
                     >
                       <User size={16} /> Profile
                     </button>
-                    <button
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        navigate('/change-password');
-                      }}
-                    >
-                      <Settings size={16} /> Change password
-                    </button>
+             <button
+  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
+  onClick={() => {
+    setMenuOpen(false);
+    navigate(user?.has_password ? '/change-password' : '/set-password-account');
+  }}
+>
+  <Settings size={16} />
+  {user?.has_password ? 'Change password' : 'Set password'}
+</button>
                     <button
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-danger hover:bg-danger/5"
                       onClick={handleLogout}

@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Services\Auth\PasswordResetService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -17,18 +18,18 @@ class PasswordController extends Controller
         private PasswordResetService $passwordResetService,
     ) {}
 
-    public function forgot(ForgotPasswordRequest $request): JsonResponse
-    {
-        $this->passwordResetService->sendResetLink(
-            $request->string('email')->toString(),
-        );
+public function forgot(ForgotPasswordRequest $request): JsonResponse
+{
+    $this->passwordResetService->sendResetOrSetLink(
+        $request->string('email')->toString(),
+    );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'If an account exists for this email, a reset link has been sent.',
-            'data' => null,
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'message' => 'If an account exists for this email, we have sent instructions.',
+        'data' => null,
+    ]);
+}
 
     public function reset(ResetPasswordRequest $request): JsonResponse
     {
@@ -64,4 +65,45 @@ class PasswordController extends Controller
             'data' => null,
         ]);
     }
+
+
+    public function set(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->hasPassword()) {
+            throw ValidationException::withMessages([
+                'password' => ['Your account already has a password. Use change-password instead.'],
+            ]);
+        }
+
+        $user->forceFill(['password' => Hash::make($request->string('password')->toString())])->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password set successfully. You can now log in with email and password.',
+            'data' => null,
+        ]);
+    }
+
+    public function setWithToken(Request $request): JsonResponse
+{
+    $validated = $request->validate([
+        'email' => ['required', 'string', 'email'],
+        'token' => ['required', 'string'],
+        'password' => ['required', 'string', 'min:8', 'confirmed'],
+    ]);
+
+    $this->passwordResetService->setPasswordWithToken(
+        $validated['email'],
+        $validated['token'],
+        $validated['password'],
+    );
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Password set successfully. You can now log in with email and password.',
+        'data' => null,
+    ]);
+}
 }

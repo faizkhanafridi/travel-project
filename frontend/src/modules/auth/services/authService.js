@@ -46,6 +46,17 @@ export const authService = {
     return data;
   },
 
+async setPassword(payload) {
+  // Authenticated flow (logged-in social-only user)
+  const { data } = await axiosInstance.post('/auth/set-password', payload);
+  return data;
+},
+
+async setPasswordWithToken(payload) {
+  // Public flow (email link with token + email)
+  const { data } = await axiosInstance.post('/auth/set-password-with-token', payload);
+  return data;
+},
   async chooseRole(payload) {
     const { data } = await axiosInstance.post('/auth/onboarding/choose-role', payload);
     return data;

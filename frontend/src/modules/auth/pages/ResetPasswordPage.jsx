@@ -65,6 +65,18 @@ export default function ResetPasswordPage() {
           required
           {...register('token')}
         />
+        {tokenError && (
+  <div className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger space-y-1">
+    <p>{tokenError}</p>
+    <p className="text-ink-700">
+      If you signed up with Google or Facebook, use the{' '}
+      <Link to="/forgot-password" className="text-primary font-semibold underline">
+        forgot password
+      </Link>{' '}
+      page to request a &ldquo;Set your password&rdquo; link.
+    </p>
+  </div>
+)}
         <PasswordInput
           label="New password"
           error={errors.password?.message}

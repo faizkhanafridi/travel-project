@@ -1,0 +1,1483 @@
+<?php
+
+namespace App\Enums\Auth;
+
+enum AccountType: string
+{
+    case CUSTOMER = 'customer';
+    case AGENT = 'agent';
+    case SUPER_ADMIN = 'super_admin';
+}
+
+<?php
+
+namespace App\Enums\Auth;
+
+enum RoleName: string
+{
+    case CUSTOMER = 'customer';
+    case AGENT = 'agent';
+    case SUPER_ADMIN = 'super_admin';
+}
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password')->nullable(); // nullable: social-only users
+            $table->string('account_type', 20)->default('customer');
+            $table->boolean('onboarding_completed')->default(false);
+            $table->rememberToken();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token'); // hashed
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('sessions');
+    }
+};
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('pending_registrations', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->string('email')->index();
+            $table->string('password'); // hashed
+            $table->string('verification_code'); // hashed
+            $table->unsignedTinyInteger('attempts')->default(0);
+            $table->timestamp('expires_at');
+            $table->timestamp('last_sent_at');
+            $table->ipAddress('ip_address')->nullable();
+            $table->timestamps();
+
+            // Prevent duplicate pending registrations for the same email
+            $table->unique('email');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('pending_registrations');
+    }
+};
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('social_accounts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->string('provider', 50); // google | facebook
+            $table->string('provider_user_id');
+            $table->timestamps();
+
+            $table->unique(['provider', 'provider_user_id']);
+            $table->unique(['user_id', 'provider']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('social_accounts');
+    }
+};
+
+
+<?php
+
+namespace App\Models\Auth;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class PendingRegistration extends Model
+{
+    protected $fillable = [
+        'uuid',
+        'email',
+        'password',
+        'verification_code',
+        'attempts',
+        'expires_at',
+        'last_sent_at',
+        'ip_address',
+    ];
+
+    protected $hidden = [
+        'password',
+        'verification_code',
+    ];
+
+    protected $casts = [
+        'expires_at' => 'datetime',
+        'last_sent_at' => 'datetime',
+        'attempts' => 'integer',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $model) {
+            $model->uuid ??= (string) Str::uuid();
+        });
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at->isPast();
+    }
+
+    public function hasExceededAttempts(int $max): bool
+    {
+        return $this->attempts >= $max;
+    }
+
+    public function canResend(int $cooldownSeconds): bool
+    {
+        return $this->last_sent_at->addSeconds($cooldownSeconds)->isPast();
+    }
+}<?php
+
+namespace App\Models\Auth;
+
+use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class SocialAccount extends Model
+{
+    protected $fillable = [
+        'user_id',
+        'provider',
+        'provider_user_id',
+    ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}<?php
+
+namespace App\Models;
+
+use App\Enums\Auth\AccountType;
+use App\Models\Auth\SocialAccount;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
+
+    protected $fillable = [
+        'uuid',
+        'email',
+        'password',
+        'account_type',
+        'onboarding_completed',
+        'email_verified_at',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'onboarding_completed' => 'boolean',
+        'account_type' => AccountType::class,
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $user) {
+            $user->uuid ??= (string) Str::uuid();
+        });
+    }
+
+    // A user "has a password" only if it was set locally.
+    public function hasPassword(): bool
+    {
+        return ! is_null($this->password);
+    }
+
+    public function socialAccounts()
+    {
+        return $this->hasMany(SocialAccount::class);
+    }
+}<?php
+
+namespace App\Repositories\Contracts\Auth;
+
+use App\Models\Auth\PendingRegistration;
+
+interface PendingRegistrationRepositoryInterface
+{
+    public function findByEmail(string $email): ?PendingRegistration;
+
+    public function create(array $data): PendingRegistration;
+
+    public function update(PendingRegistration $pending, array $data): PendingRegistration;
+
+    public function delete(PendingRegistration $pending): void;
+
+    public function incrementAttempts(PendingRegistration $pending): void;
+}<?php
+
+namespace App\Repositories\Eloquent\Auth;
+
+use App\Models\Auth\PendingRegistration;
+use App\Repositories\Contracts\Auth\PendingRegistrationRepositoryInterface;
+
+class PendingRegistrationRepository implements PendingRegistrationRepositoryInterface
+{
+    public function findByEmail(string $email): ?PendingRegistration
+    {
+        return PendingRegistration::where('email', $email)->first();
+    }
+
+    public function create(array $data): PendingRegistration
+    {
+        return PendingRegistration::create($data);
+    }
+
+    public function update(PendingRegistration $pending, array $data): PendingRegistration
+    {
+        $pending->update($data);
+
+        return $pending->refresh();
+    }
+
+    public function delete(PendingRegistration $pending): void
+    {
+        $pending->delete();
+    }
+
+    public function incrementAttempts(PendingRegistration $pending): void
+    {
+        $pending->increment('attempts');
+    }
+}<?php
+
+namespace App\Repositories\Contracts\Auth;
+
+use App\Models\User;
+
+interface UserRepositoryInterface
+{
+    public function findByEmail(string $email): ?User;
+
+    public function findByUuid(string $uuid): ?User;
+
+    public function create(array $data): User;
+
+    public function markEmailVerified(User $user): User;
+
+    public function updatePassword(User $user, string $hashedPassword): User;
+
+    public function updateOnboarding(User $user, array $data): User;
+}<?php
+
+namespace App\Repositories\Eloquent\Auth;
+
+use App\Models\User;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+
+class UserRepository implements UserRepositoryInterface
+{
+    public function findByEmail(string $email): ?User
+    {
+        return User::where('email', $email)->first();
+    }
+
+    public function findByUuid(string $uuid): ?User
+    {
+        return User::where('uuid', $uuid)->first();
+    }
+
+    public function create(array $data): User
+    {
+        return User::create($data);
+    }
+
+    public function markEmailVerified(User $user): User
+    {
+        $user->forceFill(['email_verified_at' => now()])->save();
+
+        return $user->refresh();
+    }
+
+    public function updatePassword(User $user, string $hashedPassword): User
+    {
+        $user->forceFill(['password' => $hashedPassword])->save();
+
+        return $user->refresh();
+    }
+
+    public function updateOnboarding(User $user, array $data): User
+    {
+        $user->update($data);
+
+        return $user->refresh();
+    }
+}<?php
+
+namespace App\Repositories\Contracts\Auth;
+
+use App\Models\Auth\SocialAccount;
+
+interface SocialAccountRepositoryInterface
+{
+    public function findByProvider(string $provider, string $providerUserId): ?SocialAccount;
+
+    public function create(array $data): SocialAccount;
+}<?php
+
+namespace App\Repositories\Eloquent\Auth;
+
+use App\Models\Auth\SocialAccount;
+use App\Repositories\Contracts\Auth\SocialAccountRepositoryInterface;
+
+class SocialAccountRepository implements SocialAccountRepositoryInterface
+{
+    public function findByProvider(string $provider, string $providerUserId): ?SocialAccount
+    {
+        return SocialAccount::where('provider', $provider)
+            ->where('provider_user_id', $providerUserId)
+            ->first();
+    }
+
+    public function create(array $data): SocialAccount
+    {
+        return SocialAccount::create($data);
+    }
+}<?php
+
+namespace App\Services\Auth;
+
+use Illuminate\Support\Facades\Hash;
+
+class VerificationCodeService
+{
+    public function generate(): string
+    {
+        return (string) random_int(100000, 999999);
+    }
+
+    public function hash(string $code): string
+    {
+        return Hash::make($code);
+    }
+
+    public function verify(string $code, string $hashedCode): bool
+    {
+        return Hash::check($code, $hashedCode);
+    }
+}<?php
+
+namespace App\Services\Auth;
+
+use App\Enums\Auth\AccountType;
+use App\Enums\Auth\RoleName;
+use App\Jobs\Auth\SendVerificationCodeJob;
+use App\Models\Auth\PendingRegistration;
+use App\Models\User;
+use App\Repositories\Contracts\Auth\PendingRegistrationRepositoryInterface;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+
+class RegistrationService
+{
+    public function __construct(
+        private PendingRegistrationRepositoryInterface $pendingRepo,
+        private UserRepositoryInterface $userRepo,
+        private VerificationCodeService $codeService,
+    ) {}
+
+    /**
+     * Step 1 — Register: write to pending_registrations. No users row created.
+     */
+    public function register(string $email, string $plainPassword, ?string $ip): PendingRegistration
+    {
+        // If a verified user already exists, reject (generic message in controller).
+        if ($this->userRepo->findByEmail($email)) {
+            throw ValidationException::withMessages([
+                'email' => ['An account with this email already exists.'],
+            ]);
+        }
+
+        $code = $this->codeService->generate();
+        $ttl = (int) config('auth.verification_code_ttl_minutes', 15) ?: 15;
+
+        $existing = $this->pendingRepo->findByEmail($email);
+
+        $payload = [
+            'email' => $email,
+            'password' => Hash::make($plainPassword),
+            'verification_code' => $this->codeService->hash($code),
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes($ttl),
+            'last_sent_at' => now(),
+            'ip_address' => $ip,
+        ];
+
+        $pending = $existing
+            ? $this->pendingRepo->update($existing, $payload)
+            : $this->pendingRepo->create($payload);
+
+        // Queue the email (Redis queue). Never log the code.
+        SendVerificationCodeJob::dispatch($pending->email, $code);
+
+        return $pending;
+    }
+
+    /**
+     * Step 2 — Verify email: atomically create the users row + assign role.
+     */
+    public function verifyEmail(string $email, string $code): User
+    {
+        $pending = $this->pendingRepo->findByEmail($email);
+
+        if (! $pending) {
+            throw ValidationException::withMessages([
+                'email' => ['No pending registration found for this email.'],
+            ]);
+        }
+
+        if ($pending->isExpired()) {
+            $this->pendingRepo->delete($pending);
+            throw ValidationException::withMessages([
+                'code' => ['This verification code has expired. Please register again.'],
+            ]);
+        }
+
+        $maxAttempts = (int) config('auth.verification_max_attempts', 5) ?: 5;
+
+        if ($pending->hasExceededAttempts($maxAttempts)) {
+            throw ValidationException::withMessages([
+                'code' => ['Too many incorrect attempts. Please register again.'],
+            ]);
+        }
+
+        if (! $this->codeService->verify($code, $pending->verification_code)) {
+            $this->pendingRepo->incrementAttempts($pending);
+            throw ValidationException::withMessages([
+                'code' => ['The verification code is incorrect.'],
+            ]);
+        }
+
+        // Atomic: create user + assign role + delete pending row.
+        $user = DB::transaction(function () use ($pending) {
+            $user = $this->userRepo->create([
+                'email' => $pending->email,
+                'password' => $pending->password, // already hashed
+                'email_verified_at' => now(),
+                'account_type' => AccountType::CUSTOMER, // default until onboarding
+                'onboarding_completed' => false,
+            ]);
+
+            $user->assignRole(RoleName::CUSTOMER->value);
+
+            $this->pendingRepo->delete($pending);
+
+            return $user;
+        });
+
+        return $user;
+    }
+
+    public function resendVerification(string $email): void
+    {
+        $pending = $this->pendingRepo->findByEmail($email);
+
+        if (! $pending) {
+            // Generic response — do not leak whether email is registered.
+            return;
+        }
+
+        $cooldown = (int) config('auth.verification_resend_cooldown_seconds', 60) ?: 60;
+
+        if (! $pending->canResend($cooldown)) {
+            $wait = $pending->last_sent_at->addSeconds($cooldown)->diffInSeconds(now());
+            throw ValidationException::withMessages([
+                'email' => ["Please wait {$wait} seconds before requesting a new code."],
+            ]);
+        }
+
+        $code = $this->codeService->generate();
+        $ttl = (int) config('auth.verification_code_ttl_minutes', 15) ?: 15;
+
+        $this->pendingRepo->update($pending, [
+            'verification_code' => $this->codeService->hash($code),
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes($ttl),
+            'last_sent_at' => now(),
+        ]);
+
+        SendVerificationCodeJob::dispatch($pending->email, $code);
+    }
+}<?php
+
+namespace App\Services\Auth;
+
+use App\Models\User;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+
+class LoginService
+{
+    public function __construct(
+        private UserRepositoryInterface $userRepo,
+    ) {}
+
+    public function attempt(string $email, string $password): User
+    {
+        $user = $this->userRepo->findByEmail($email);
+
+        // Generic message to reduce account enumeration.
+        if (! $user || ! $user->hasPassword() || ! Hash::check($password, $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => ['The provided credentials are incorrect.'],
+            ]);
+        }
+
+        if (! $user->email_verified_at) {
+            throw ValidationException::withMessages([
+                'email' => ['Please verify your email address before logging in.'],
+            ]);
+        }
+
+        return $user;
+    }
+}<?php
+
+namespace App\Services\Auth;
+
+use App\Jobs\Auth\SendPasswordResetJob;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+class PasswordResetService
+{
+    public function __construct(
+        private UserRepositoryInterface $userRepo,
+    ) {}
+
+    public function sendResetLink(string $email): void
+    {
+        $user = $this->userRepo->findByEmail($email);
+
+        // Always generic; never reveal whether the email exists.
+        if (! $user || ! $user->hasPassword()) {
+            return;
+        }
+
+        $plainToken = Str::random(64);
+        $hashedToken = Hash::make($plainToken);
+        $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $email],
+            [
+                'token' => $hashedToken,
+                'created_at' => now(),
+            ],
+        );
+
+        // The plain token is emailed to the user; only the hash is stored.
+        SendPasswordResetJob::dispatch($email, $plainToken, $ttl);
+    }
+
+    public function reset(string $email, string $plainToken, string $newPassword): void
+    {
+        $user = $this->userRepo->findByEmail($email);
+
+        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
+
+        if (! $user || ! $record || ! Hash::check($plainToken, $record->token)) {
+            throw ValidationException::withMessages([
+                'token' => ['This password reset token is invalid.'],
+            ]);
+        }
+
+        $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
+
+        if (now()->diffInMinutes($record->created_at) > $ttl) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            throw ValidationException::withMessages([
+                'token' => ['This password reset token has expired.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($user, $email, $newPassword) {
+            $this->userRepo->updatePassword($user, Hash::make($newPassword));
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            // Invalidate sessions/tokens on password change.
+            $user->tokens()->delete();
+        });
+    }
+}<?php
+
+namespace App\Services\Auth;
+
+use App\Enums\Auth\AccountType;
+use App\Enums\Auth\RoleName;
+use App\Models\User;
+use App\Repositories\Contracts\Auth\SocialAccountRepositoryInterface;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
+
+class SocialAuthService
+{
+    public function __construct(
+        private UserRepositoryInterface $userRepo,
+        private SocialAccountRepositoryInterface $socialRepo,
+    ) {}
+
+    public function redirect(string $provider)
+    {
+        return Socialite::driver($provider)->redirect();
+    }
+
+    public function callback(string $provider): User
+    {
+        $socialUser = Socialite::driver($provider)->user();
+
+        // 1. Already linked social account?
+        $linked = $this->socialRepo->findByProvider($provider, (string) $socialUser->getId());
+
+        if ($linked) {
+            return $linked->user;
+        }
+
+        // 2. Existing user with same verified email? Link it.
+        if ($socialUser->getEmail()) {
+            $existing = $this->userRepo->findByEmail($socialUser->getEmail());
+
+            if ($existing) {
+                $this->socialRepo->create([
+                    'user_id' => $existing->id,
+                    'provider' => $provider,
+                    'provider_user_id' => (string) $socialUser->getId(),
+                ]);
+
+                // Ensure email is marked verified because the provider verified it.
+                if (! $existing->email_verified_at) {
+                    $this->userRepo->markEmailVerified($existing);
+                }
+
+                return $existing->refresh();
+            }
+        }
+
+        // 3. Brand new user — social email is verified by the provider.
+        $user = DB::transaction(function () use ($provider, $socialUser) {
+            $email = $socialUser->getEmail() ?? Str::uuid().'@social.local';
+
+            $user = $this->userRepo->create([
+                'email' => $email,
+                'password' => null,
+                'email_verified_at' => now(),
+                'account_type' => AccountType::CUSTOMER,
+                'onboarding_completed' => false,
+            ]);
+
+            $user->assignRole(RoleName::CUSTOMER->value);
+
+            $this->socialRepo->create([
+                'user_id' => $user->id,
+                'provider' => $provider,
+                'provider_user_id' => (string) $socialUser->getId(),
+            ]);
+
+            return $user;
+        });
+
+        return $user;
+    }
+}<?php
+
+namespace App\Services\Auth;
+
+use App\Enums\Auth\AccountType;
+use App\Models\User;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Validation\ValidationException;
+
+class OnboardingService
+{
+    public function __construct(
+        private UserRepositoryInterface $userRepo,
+    ) {}
+
+    public function chooseRole(User $user, string $accountType): User
+    {
+        if ($user->onboarding_completed) {
+            throw ValidationException::withMessages([
+                'account_type' => ['Onboarding has already been completed.'],
+            ]);
+        }
+
+        // Once a user has been approved as an agent, they cannot revert.
+        if ($user->hasRole('agent') && $accountType === AccountType::CUSTOMER->value) {
+            throw ValidationException::withMessages([
+                'account_type' => ['Approved agents cannot switch back to a customer account.'],
+            ]);
+        }
+
+        $enum = AccountType::tryFrom($accountType);
+
+        if (! $enum || $enum === AccountType::SUPER_ADMIN) {
+            throw ValidationException::withMessages([
+                'account_type' => ['Invalid account type selected.'],
+            ]);
+        }
+
+        return $this->userRepo->updateOnboarding($user, [
+            'account_type' => $enum,
+            'onboarding_completed' => true,
+        ]);
+    }
+}<?php
+
+namespace App\Jobs\Auth;
+
+use App\Mail\Auth\VerificationCodeMail;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Mail;
+
+class SendVerificationCodeJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 3;
+
+    public function __construct(
+        public string $email,
+        public string $code,
+    ) {}
+
+    public function handle(): void
+    {
+        Mail::to($this->email)->send(new VerificationCodeMail($this->code));
+    }
+}<?php
+
+namespace App\Jobs\Auth;
+
+use App\Mail\Auth\PasswordResetMail;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Mail;
+
+class SendPasswordResetJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 3;
+
+    public function __construct(
+        public string $email,
+        public string $plainToken,
+        public int $ttlMinutes,
+    ) {}
+
+    public function handle(): void
+    {
+        Mail::to($this->email)->send(
+            new PasswordResetMail($this->plainToken, $this->ttlMinutes)
+        );
+    }
+}<?php
+
+namespace App\Mail\Auth;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class VerificationCodeMail extends Mailable
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public string $code,
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            subject: 'Verify your email address',
+        );
+    }
+
+    public function content(): Content
+    {
+        return new Content(
+            view: 'emails.auth.verification-code',
+            with: ['code' => $this->code],
+        );
+    }
+}   <?php
+
+namespace App\Mail\Auth;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class PasswordResetMail extends Mailable
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public string $token,
+        public int $ttlMinutes,
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            subject: 'Reset your password',
+        );
+    }
+
+    public function content(): Content
+    {
+        return new Content(
+            view: 'emails.auth.password-reset',
+            with: [
+                'token' => $this->token,
+                'ttlMinutes' => $this->ttlMinutes,
+            ],
+        );
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class RegisterRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class VerifyEmailRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email'],
+            'code' => ['required', 'string', 'digits:6'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ResendVerificationRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class LoginRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email'],
+            'password' => ['required', 'string'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use App\Enums\Auth\AccountType;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class ChooseRoleRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user() !== null;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'account_type' => [
+                'required',
+                'string',
+                Rule::in([
+                    AccountType::CUSTOMER->value,
+                    AccountType::AGENT->value,
+                ]),
+            ],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ForgotPasswordRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ResetPasswordRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email'],
+            'token' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ChangePasswordRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user() !== null;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ];
+    }
+}<?php
+
+namespace App\Http\Resources\Auth;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class UserResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'uuid' => $this->uuid,
+            'email' => $this->email,
+            'email_verified_at' => $this->email_verified_at?->toIso8601String(),
+            'account_type' => $this->account_type?->value ?? $this->account_type,
+            'onboarding_completed' => (bool) $this->onboarding_completed,
+            'roles' => $this->getRoleNames(),
+            'has_password' => $this->hasPassword(),
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+}<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\ResendVerificationRequest;
+use App\Http\Requests\Auth\VerifyEmailRequest;
+use App\Http\Resources\Auth\UserResource;
+use App\Services\Auth\RegistrationService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+
+class RegistrationController extends Controller
+{
+    public function __construct(
+        private RegistrationService $registrationService,
+    ) {}
+
+    public function register(RegisterRequest $request): JsonResponse
+    {
+        $this->registrationService->register(
+            $request->string('email')->toString(),
+            $request->string('password')->toString(),
+            $request->ip(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'A 6-digit verification code has been sent to your email.',
+            'data' => null,
+        ], 201);
+    }
+
+    public function verify(VerifyEmailRequest $request): JsonResponse
+    {
+        $user = $this->registrationService->verifyEmail(
+            $request->string('email')->toString(),
+            $request->string('code')->toString(),
+        );
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Email verified successfully. Welcome!',
+            'data' => new UserResource($user),
+        ]);
+    }
+
+    public function resend(ResendVerificationRequest $request): JsonResponse
+    {
+        $this->registrationService->resendVerification(
+            $request->string('email')->toString(),
+        );
+
+        // Always return the same message to avoid enumeration.
+        return response()->json([
+            'success' => true,
+            'message' => 'If this email is pending verification, a new code has been sent.',
+            'data' => null,
+        ]);
+    }
+}<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Resources\Auth\UserResource;
+use App\Services\Auth\LoginService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class LoginController extends Controller
+{
+    public function __construct(
+        private LoginService $loginService,
+    ) {}
+
+    public function login(LoginRequest $request): JsonResponse
+    {
+        $user = $this->loginService->attempt(
+            $request->string('email')->toString(),
+            $request->string('password')->toString(),
+        );
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Logged in successfully.',
+            'data' => new UserResource($user),
+        ]);
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Logged out successfully.',
+            'data' => null,
+        ]);
+    }
+
+    public function me(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Authenticated user retrieved.',
+            'data' => new UserResource($request->user()),
+        ]);
+    }
+}<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChooseRoleRequest;
+use App\Http\Resources\Auth\UserResource;
+use App\Services\Auth\OnboardingService;
+use Illuminate\Http\JsonResponse;
+
+class OnboardingController extends Controller
+{
+    public function __construct(
+        private OnboardingService $onboardingService,
+    ) {}
+
+    public function chooseRole(ChooseRoleRequest $request): JsonResponse
+    {
+        $user = $this->onboardingService->chooseRole(
+            $request->user(),
+            $request->string('account_type')->toString(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Onboarding completed. Please set up your profile.',
+            'data' => new UserResource($user),
+        ]);
+    }
+}<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChangePasswordRequest;
+use App\Http\Requests\Auth\ForgotPasswordRequest;
+use App\Http\Requests\Auth\ResetPasswordRequest;
+use App\Services\Auth\PasswordResetService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+
+class PasswordController extends Controller
+{
+    public function __construct(
+        private PasswordResetService $passwordResetService,
+    ) {}
+
+    public function forgot(ForgotPasswordRequest $request): JsonResponse
+    {
+        $this->passwordResetService->sendResetLink(
+            $request->string('email')->toString(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'If an account exists for this email, a reset link has been sent.',
+            'data' => null,
+        ]);
+    }
+
+    public function reset(ResetPasswordRequest $request): JsonResponse
+    {
+        $this->passwordResetService->reset(
+            $request->string('email')->toString(),
+            $request->string('token')->toString(),
+            $request->string('password')->toString(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password reset successfully. Please log in with your new password.',
+            'data' => null,
+        ]);
+    }
+
+    public function change(ChangePasswordRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->hasPassword() || ! Hash::check($request->string('current_password')->toString(), $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['The current password is incorrect.'],
+            ]);
+        }
+
+        $user->forceFill(['password' => Hash::make($request->string('password')->toString())])->save();
+        $user->tokens()->delete(); // invalidate any personal access tokens
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password changed successfully.',
+            'data' => null,
+        ]);
+    }
+}<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Services\Auth\SocialAuthService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class SocialAuthController extends Controller
+{
+    public function __construct(
+        private SocialAuthService $socialAuthService,
+    ) {}
+
+    public function redirect(string $provider): RedirectResponse
+    {
+        $this->ensureSupported($provider);
+
+        return $this->socialAuthService->redirect($provider);
+    }
+
+    public function callback(string $provider, Request $request): RedirectResponse
+    {
+        $this->ensureSupported($provider);
+
+        $user = $this->socialAuthService->callback($provider);
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+
+        // Redirect to SPA; onboarding is decided on the frontend via /auth/me.
+        return redirect()->away(
+            rtrim(config('app.frontend_url', env('FRONTEND_URL')), '/').'/auth/social/callback'
+        );
+    }
+
+    private function ensureSupported(string $provider): void
+    {
+        abort_unless(in_array($provider, ['google', 'facebook'], true), 404);
+    }
+}<?php
+
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\OnboardingController;
+use App\Http\Controllers\Auth\PasswordController;
+use App\Http\Controllers\Auth\RegistrationController;
+use App\Http\Controllers\Auth\SocialAuthController;
+use Illuminate\Support\Facades\Route;
+
+// Public authentication endpoints.
+Route::prefix('auth')->group(function () {
+    // Registration + verification (no users row created until verified).
+    Route::post('/register', [RegistrationController::class, 'register'])
+        ->middleware('throttle:auth.registration');
+    Route::post('/verify-email', [RegistrationController::class, 'verify'])
+        ->middleware('throttle:auth.verify');
+    Route::post('/resend-verification', [RegistrationController::class, 'resend'])
+        ->middleware('throttle:auth.registration');
+
+    // Login / logout / me.
+    Route::post('/login', [LoginController::class, 'login'])
+        ->middleware('throttle:auth.login');
+
+    // Password reset.
+    Route::post('/forgot-password', [PasswordController::class, 'forgot'])
+        ->middleware('throttle:auth.registration');
+    Route::post('/reset-password', [PasswordController::class, 'reset'])
+        ->middleware('throttle:auth.registration');
+
+    // Social login (Google / Facebook).
+    Route::get('/social/{provider}/redirect', [SocialAuthController::class, 'redirect'])
+        ->middleware('throttle:auth.social');
+    Route::get('/social/{provider}/callback', [SocialAuthController::class, 'callback'])
+        ->middleware('throttle:auth.social');
+
+    // Authenticated endpoints.
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/me', [LoginController::class, 'me']);
+        Route::post('/logout', [LoginController::class, 'logout']);
+        Route::post('/onboarding/choose-role', [OnboardingController::class, 'chooseRole']);
+        Route::post('/change-password', [PasswordController::class, 'change']);
+    });
+});<?php
+
+namespace Database\Seeders;
+
+use App\Enums\Auth\RoleName;
+use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
+
+class RoleAndPermissionSeeder extends Seeder
+{
+    public function run(): void
+    {
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
+        // Base permissions (extend per module later).
+        $permissions = [
+            'manage platform',
+            'manage agents',
+            'manage services',
+            'manage bookings',
+        ];
+
+        foreach ($permissions as $permission) {
+            Permission::findOrCreate($permission, 'web');
+        }
+
+        // Roles (idempotent).
+        $customer = Role::findOrCreate(RoleName::CUSTOMER->value, 'web');
+        $customer->syncPermissions([]);
+
+        $agent = Role::findOrCreate(RoleName::AGENT->value, 'web');
+        $agent->syncPermissions([]);
+
+        $superAdmin = Role::findOrCreate(RoleName::SUPER_ADMIN->value, 'web');
+        $superAdmin->syncPermissions(Permission::all());
+    }
+}<?php
+
+namespace Database\Seeders;
+
+use App\Enums\Auth\AccountType;
+use App\Enums\Auth\RoleName;
+use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+
+class SuperAdminSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $user = User::firstOrCreate(
+            ['email' => 'admin@travelmarketplace.test'],
+            [
+                'password' => Hash::make('admin@travelmarketplace.test'),
+                'email_verified_at' => now(),
+                'account_type' => AccountType::SUPER_ADMIN,
+                'onboarding_completed' => true,
+            ],
+        );
+
+        $user->syncRoles([RoleName::SUPER_ADMIN->value]);
+
+        $this->command->warn('SuperAdmin created: admin@travelmarketplace.test — change the password immediately.');
+    }
+}

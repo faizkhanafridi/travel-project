@@ -26,6 +26,28 @@ export const resendVerificationSchema = z.object({
   email: z.string().email('Enter a valid email'),
 });
 
+
+export const setPasswordSchema = z
+  .object({
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    password_confirmation: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((v) => v.password === v.password_confirmation, {
+    path: ['password_confirmation'],
+    message: 'Passwords do not match',
+  });
+  
+  export const setPasswordWithTokenSchema = z
+  .object({
+    email: z.string().min(1, 'Email is required').email('Enter a valid email'),
+    token: z.string().min(1, 'Reset token is required'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    password_confirmation: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((v) => v.password === v.password_confirmation, {
+    path: ['password_confirmation'],
+    message: 'Passwords do not match',
+  });
 export const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email'),
   password: z.string().min(1, 'Password is required'),

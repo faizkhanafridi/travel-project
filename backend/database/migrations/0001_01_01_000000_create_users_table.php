@@ -24,7 +24,9 @@ return new class extends Migration
             $table->softDeletes();
         });
         Schema::create('password_reset_tokens', function (Blueprint $table) {
-            $table->string('email')->primary();
+            $table->string('email')->primary();            
+            $table->string('purpose', 20)->default('reset');
+
             $table->string('token'); // hashed
             $table->timestamp('created_at')->nullable();
         });

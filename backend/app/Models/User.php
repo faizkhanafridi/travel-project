@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\Auth\AccountType;
 use App\Models\Auth\SocialAccount;
+use App\Models\UserProfile\UserProfile;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -52,5 +53,10 @@ class User extends Authenticatable
     public function socialAccounts()
     {
         return $this->hasMany(SocialAccount::class);
+    }
+
+    public function profile()
+    {
+        return $this->hasOne(UserProfile::class);
     }
 }

@@ -11,12 +11,14 @@ import SocialButtons from '../../../shared/components/SocialButtons';
 import { loginSchema } from '../schemas/authSchemas';
 import { useLogin } from '../hooks/useLogin';
 import { resolvePostAuthRoute } from '../../../shared/lib/postAuthRoute';
+import useAuthStore from '../../../shared/stores/authStore';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { mutateAsync, isPending, error } = useLogin();
-
+const currentUser = useAuthStore((s) => s.user);
+const isLoggedInSocialOnly = !!currentUser && !currentUser.has_password;
   const {
     register,
     handleSubmit,
@@ -69,14 +71,23 @@ export default function LoginPage() {
             required
             {...register('password')}
           />
-          <div className="mt-1.5 text-right">
-            <Link
-              to="/forgot-password"
-              className="text-sm text-primary hover:underline"
-            >
-              Forgot password?
-            </Link>
-          </div>
+   <div className="mt-1.5 text-right">
+  {isLoggedInSocialOnly ? (
+    <Link
+      to="/set-password-account"
+      className="text-sm text-primary hover:underline"
+    >
+      Set password
+    </Link>
+  ) : (
+    <Link
+      to="/forgot-password"
+      className="text-sm text-primary hover:underline"
+    >
+      Forgot password?
+    </Link>
+  )}
+</div>
         </div>
 
         <Button

@@ -14,10 +14,20 @@ return Application::configure(basePath: dirname(__DIR__))
         channels: __DIR__ . '/../routes/channels.php',
         health: '/up',
         then: function () {
-            // Module 01
+
+            // MODULE 01 AUTHENTICATION
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/auth.php'));
+
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/auth.php'));
+
+            // MODULE 02 USER PROFILE 
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/user-profile.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
