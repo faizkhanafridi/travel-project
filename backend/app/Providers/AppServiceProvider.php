@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -42,6 +43,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             \App\Repositories\Contracts\UserProfile\EmailChangeRequestRepositoryInterface::class,
             \App\Repositories\Eloquent\UserProfile\EmailChangeRequestRepository::class,
+        );
+
+
+        $this->app->bind(
+            \App\Repositories\Contracts\Agent\AgentRepositoryInterface::class,
+            \App\Repositories\Eloquent\Agent\AgentRepository::class,
         );
     }
 
@@ -89,5 +96,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('profile.write', function (Request $request) {
             return Limit::perMinute(20)->by($request->user()?->id . '|' . $request->ip());
         });
+
+
+
+        Gate::policy(\App\Models\Agent\Agent::class, \App\Policies\Agent\AgentPolicy::class);
     }
 }

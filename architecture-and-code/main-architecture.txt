@@ -1,0 +1,1935 @@
+Travel Marketplace — Complete Project Development Prompt
+Act as a System Designer, Senior Software Engineer, and Expert Laravel 12 and React.js Developer. Build my 
+Travel Marketplace from scratch using Laravel 12 + React Vite JSX, following my architecture, requirements, 
+and development workflow exactly.
+
+
+
+Travel Marketplace — Security & Scalability Guidelines
+These guidelines are tailored to this project, including Customers, Agents, SuperAdmin, travel services, 
+private messaging, custom travel posts, offers, bookings, reviews, notifications, and the future Finance module.
+
+1. Architecture principles
+
+React frontend
+UI · Client-side validation · API cache · Error handling
+
+HTTPS · Secure session · Rate limiting
+
+Laravel API — Security boundary
+Authentication · Authorization · Validation · Policies · Business rules
+
+MySQL
+Persistent data and constraints
+
+Redis
+Cache, queues, rate limits
+
+Queue workers
+Email, notifications, background jobs
+
+Private file storage
+Identity documents and booking files
+
+Core rule: React improves the user experience; Laravel is responsible for security and business correctness. 
+Never trust the frontend to enforce permissions, prices, balances, statuses, or ownership.
+
+
+2. Security rules to follow in every module
+
+2.1 Authentication and account security
+Authentication module is the foundation for the entire platform.
+- Use Laravel Sanctum with an authentication approach appropriate to  deployment. For a first-party React SPA on the same top-level domain,
+  prefer secure, cookie-based sessions rather than storing bearer tokens in browser storage.
+- Use HTTPS everywhere in production.
+- Store passwords using Laravel's secure password hashing.
+- Require email verification before activating the account as specified in project.
+- Hash verification and password-reset tokens at rest where practical; make them expire and invalidate them after use.
+- Rate-limit login, registration, password reset, verification, resend verification, and social-login endpoints, store codes in hash form into db.
+- Return generic login and reset responses where needed to reduce account enumeration.
+- Invalidate sessions after logout, password changes, account compromise, or other sensitive security events.
+- Add multi-factor authentication for SuperAdmin accounts. Consider it for Agents as well.
+- Protect Google and Facebook login against OAuth state/redirect attacks; link social accounts only after verifying ownership.
+- Never store passwords, session identifiers, API secrets, or private keys in frontend code or logs.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. Technology Stack
+
+Backend: Laravel 12, Sanctum API authentication, Breeze API-only (no Blade),
+ Spatie Laravel Permission, Socialite (Google, Facebook), Laravel broadcasting 'web sockets'.
+
+Email: SMTP, Laravel Queues for background emails.
+
+Cache: Redis.
+
+Scheduled tasks: Laravel Scheduler/cron job for nightly database backups.
+
+Frontend: React, Vite, JSX, React Router DOM, Axios, Tailwind CSS, Lucide React, AOS, TanStack Query, Zod, Zustand, use debouncing so api dont hit in every 
+sec eg for searching setTimeout after some time so api dont hit in evert key/char.
+
+Database: MySQL with Eloquent ORM.
+
+
+
+
+===================================================================================================================================================
+
+2. Architecture
+
+Use the Repository Pattern and Service Layer throughout the backend, with separate folders for every module.
+
+Backend structure:
+
+Http/Controllers/{Module}/
+
+Http/Requests/{Module}/
+
+Http/Resources/{Module}/
+
+Services/{Module}/
+
+Repositories/Contracts/{Module}/
+
+Repositories/Eloquent/{Module}/
+
+Models/{Module}/
+Enums/{Module}/
+
+
+routes, migrations, seeders, providers, middleware etc... will remain same no seperation of modules needed.
+routes will be 
+auth.php
+user-profile.php
+each route for each module not all in one.
+dont use v1 into url.
+
+
+
+Frontend structure:
+
+src/modules/{module}/pages/
+
+src/modules/{module}/components/
+
+src/modules/{module}/services/
+
+src/modules/{module}/hooks/
+
+src/modules/{module}/schemas/
+
+Shared components, API configuration, layouts, stores, utilities, and routing etc...
+
+
+
+Keep controllers thin, business logic in services, database operations in repositories, validation in Form Requests and Zod schemas, and API responses 
+in Resources.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 3. Security — Highest Priority
+
+Security is the highest priority on both frontend and backend.
+
+Enforce authentication, role-based access, permissions, and middleware on the backend.
+
+Use secure Sanctum authentication and appropriate CSRF protection.
+
+Never rely on frontend route guards or hidden buttons as the only security layer.
+
+Use UUIDs instead of raw numeric database IDs in URLs.
+
+Validate and authorize every sensitive operation.
+
+Implement rate limiting, secure file uploads, safe error handling, and appropriate database transactions.
+
+Use secure email verification, password reset, and social login flows.
+
+Never expose secrets or sensitive information in frontend code.
+
+Design scalable architecture that is maintainable and testable.
+
+Use only // comments in code. Never use /* ... */ or /** ... */
+
+
+
+
+
+
+
+
+
+
+4. URL Structure
+
+Follow Fiverr/Upwork-style readable URLs using usernames, titles, slugs, and UUIDs.
+
+Travel post example:
+
+/freya-carlson/7-day-malaysia-family-vacation?id=7f3a9c2e-6b41-4d85-a2f7-9e1c5b8d6034
+
+Agent service example:
+
+/agent-name/service-title/service-uuid/edit
+
+Marketplace category example:
+
+/marketplace?category=tours
+
+Display category names instead of numeric IDs. Apply consistent readable URL patterns to service 
+details and future modules. UUIDs do not replace backend authorization.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5. Final Modules
+
+Authentication
+User Profiles
+Agent 
+Travel Services
+Marketplace
+Messaging
+
+Travel POSTS/REQUESTS
+Bookings
+
+Reviews
+Notifications
+System/Analytics
+Dashboards
+
+Do not implement Finance/Payment yet. Design the booking architecture with clear interfaces and boundaries 
+so the Finance/Payment module can be added at the very end without rewriting existing modules.
+
+also create dashboards as well where routing will become easy for all roles so we dont need to enter urls for redirection 
+in deployment.
+
+
+
+
+
+
+
+
+
+
+
+
+ Module 01 — Authentication
+
+This handles identity, login and authorization.
+
+User roles:
+
+Customer
+Agent
+SuperAdmin 'Platform'
+
+A person doesn't initially become an Agent. They start as a normal customer.
+
+Account creation flow
+
+Register.
+
+Verify email.
+
+Create the user account only after successful email verification.
+
+Show the onboarding page to choose Customer or Agent.
+
+Both choices redirect into User Profile (Module 02) to set up username and personal information profile setup should be skipable.
+
+Customer continues as a customer.
+
+Agent continues to Become an Agent (Module 03) after profile setup.
+
+Do not create accout unless email verified.
+
+
+Authentication features
+
+Register, login, logout.
+
+Email verification. 'store code into hashes not raw 234838
+
+Choose Role onboarding page.
+
+Forgot password, reset password, and change password.
+
+Continue with Google, Facebook.
+
+Sanctum authentication.
+
+Role and permission management.
+
+Protected frontend routes and backend endpoints.
+
+SMTP email delivery using queues.
+
+Standardized API responses and validation errors.
+
+Restrictions
+
+If a user skips onboarding and redirects to the homepage, they must not see the Choose Role page again just show 
+become an agent buton only cause they are already customer so no need to show choose role page again.
+
+If a user successfully becomes an agent, do not show Become an Agent or the onboarding page.
+
+Store onboarding completion and relevant agent status persistently on the backend.
+
+Until Modules 02 and 03 are implemented, show Coming Soon when users navigate to their placeholders.
+
+7. Development Workflow
+
+Work on one module at a time.
+
+For each module, follow this exact order:
+
+Installations and required commands.
+
+Complete folder structure.
+Configuration, migrations, seeders, and environment setup as needed.
+
+Complete backend code, with exact file paths and filenames.
+
+Complete frontend code, with exact file paths and filenames.
+
+
+Testing, debugging, and security verification.
+
+Start with Module 01 — Authentication. Complete its backend first, then its frontend when i say to build.
+ Wait for my approval before starting Module 02.
+
+Provide complete, working code rather than incomplete snippets. Preserve my architecture and requirements. Do not invent unnecessary features, skip files required for functionality, or move ahead to future modules without approval.
+
+Explain the implementation clearly and concisely. Prioritize correctness, security, scalability, maintainability, and a beautiful, responsive UI with Tailwind CSS and appropriate animations.
+
+Security Requirements for module 01 
+Password and code, save password and reset,forget,verify code into hash form not raw.
+Brute-Force Protection: Apply rate limits to login, registration, email verification, resend verification, password reset, and social login endpoints.
+Token and Session Handling: Do not store sensitive authentication tokens in browser storage. Use the appropriate secure authentication mechanism for the 
+Sanctum configuration.
+Cross-Site Scripting (XSS): Never render untrusted API data as raw HTML. Sanitize content if HTML rendering is necessary.
+Cross-Origin Configuration: Restrict allowed frontend origins through CORS configuration; do not allow every origin with credentialed requests.
+
+
+
+
+
+
+# MODULE 02 — USER PROFILES
+
+## 1. User Profile Fields
+
+Implement the following fields:
+
+- UserName:* Registered username, can be change here.
+- DisplayName*
+- Email:* Registered email address.
+- Profile photo
+- Bio*
+- Phone
+- Date of birth
+- Address: Only for Customer and Agent.
+- Languages
+- Account status:* Customer or Agent. By default, Customer unless the user chooses Agent. Only one status at a time.
+- Member since:* Automatically tracked and populated by the backend when the account is created. Not editable by the user.
+
+Agency information belongs to the Agent module. The User Profile module handles only the user's personal information.
+
+## 2. Public Profiles
+
+- Show this into customer public profile without exposing sensitive  info.
+- The agent's public profile page must display Agent/Agency information from the Agent module, not the 
+  user's personal profile information.
+- Keep personal profile data separate from agency information.
+- Never expose private email addresses, passwords, sensitive account data, or other restricted fields through 
+  public API responses.
+
+
+## 3. Change Email — Verification Required
+
+When the user clicks **Change Email**, show a modal with this content:
+
+**Change email**
+
+Update your account email address.
+
+**New email address**
+
+`new@example.com`
+
+We'll send a 6-digit code to your current registered email address to authorize this change.
+
+Buttons: **Cancel** | **Send code**
+
+Link: **I can't access my current email**
+
+### Standard email-change flow
+
+1. User enters a new email address.
+2. Send a 6-digit verification code to the current registered email address.
+3. Verify the code securely.
+4. Send a verification code to the new email address.
+5. Verify the new email address.
+6. Update the account email only after all required verification steps succeed.
+
+The new email must remain unverified until the process is completed. Protect against expired codes,
+ brute-force attempts, replay attacks, duplicate email addresses, and unauthorized email changes.
+
+## 4. Alternative Flow — Can't Access Current Email
+
+When the user clicks **I can't access my current email**, update the existing modal:
+
+**Change email**
+
+Verify your identity using your current password.
+
+**New email address**
+
+`guzyhi@mailinator.com`
+
+**Current account password**
+
+`Enter your current password`
+
+After your password is verified, we'll send a verification code to the new email address.
+
+Buttons: **Back** | Continue with verification
+
+### Alternative email-change flow
+
+1. User enters the new email address and current account password.
+2. Verify the current password securely on the backend.
+3. Send a 6-digit verification code to the new email address.
+4. Verify the code.
+5. Update the email only after successful verification.
+
+Add rate limiting, code expiration, secure password verification, and protection against email enumeration.
+ Never expose verification codes in API responses or logs.
+
+For accounts that do not have a password, such as certain social-login accounts, handle the alternative verification 
+flow securely without assuming a password exists.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MODULE 03 — AGENT
+
+This is your **Fiverr seller system**.
+
+## 1. Database Tables
+
+- `agents`
+- `agent_profiles`
+- `agent_documents`
+- `agent_business_hours`
+- `agent_bank_accounts` — later into Finance module, not yet.
+
+Keep agency information separate from the personal information stored in Module 02 — User Profiles.
+
+## 2. Agent Application Flow
+
+This is the flow we are locking.
+
+
+ CUSTOMER
+       ↓
+Become an Agent
+       ↓
+Agent Application
+       ↓
+Agency Information
+       ↓
+Business Information
+       ↓
+Documents
+       ↓
+Business Hours
+       ↓
+Review
+       ↓
+Submit
+       ↓
+PENDING REVIEW
+       ↓
+ADMIN
+       ↓
+Approve / Reject / Mark as underread
+
+
+Customer can click **Become an Agent** either from onboarding after setting up their profile if choose agent or from a
+ button in the profile dropdown.
+
+## 3. Application Wizard
+
+### Step 1 — Agency Information
+
+- Agency Name*
+- Agency Owner Name*
+- Phone
+- Country*
+- City*
+- Address*
+
+### Step 2 — Business Information
+
+- Business Description*
+- Years in Business*
+- Business Type*
+- Registration Information
+- Website
+- Social Media
+- Languages
+- Specializations
+
+### Step 3 — Documents
+
+Required documents:
+
+- Business Registration*
+- License*
+- Identity Document*
+- Other Required Documents
+
+
+Allowed formats: **PDF, JPG, PNG, WEBP — maximum 10 MB per file.**
+
+Validate files securely on the backend, including MIME types, file contents, file sizes, and authorization.
+ Store private documents securely and never expose public document URLs.
+
+### Step 4 — Business Hours
+
+Allow the applicant to configure their agency's business hours.
+
+### Step 5 — Review
+
+Show all fields from every previous step so the applicant can review their complete application before submitting.
+
+**Block the Review step unless every preceding required step has been saved successfully using Save and Continue.**
+ Preserve previously saved data when navigating backward and forward.
+
+### Step 6 — Submit
+
+After submission:
+
+- Application status becomes `PENDING_REVIEW`.
+- Record the submission attempt number and submission timestamp.
+- Prevent duplicate submissions.
+- Notify the applicant that their application is under review. 'IN NOTIFICATION MODULE'
+
+## 4. Admin Application Management
+
+The admin must be able to view and review agent applications.
+
+Admin listing example:
+
+| Agency | Owner | Attempt | Status | Submitted | Action |
+|---|---|---|---|---|---|
+| Lillith Bowman | Michael Rosa | #1 | Pending | 10/26/2026, 6:45:07 PM | Review → |
+
+The admin review page should display all submitted information, including:
+
+**ABC Travels**
+
+- Owner: Ahmed Khan
+- Country: Pakistan
+- Documents: Identity, Business Registration, License
+- All other agency and business information etc...
+- Status: Pending Review
+
+
+Admin actions:
+
+- Approve
+- Reject
+- Mark under review
+
+Only SuperAdmin 'platform' can manage this where ever i say admin it means SuperAdmin 'platform'
+
+## 5. Approval Flow
+
+When the admin clicks Approve:
+
+Application Approved
+        ↓
+Agent Status = ACTIVE
+        ↓
+Agent Role Assigned
+        ↓
+Agent Dashboard Available
+        ↓
+Agent Can Create Services
+
+
+Only after approval should the user receive the Agent role and access to agent-only features. 
+A customer must not be able to grant themselves Agent privileges through frontend state or API requests.
+
+
+## 6. Rejection and Resubmission Flow
+
+When the admin clicks Reject, show a modal:
+
+**Reject submission #1**
+
+Explain what the agent needs to fix.
+
+**Reason…**
+
+Example: `fix your docs`
+
+Buttons: Cancel | Reject
+
+Save the rejection reason and associate it with the correct application attempt.
+
+The customer will then see:
+
+**Application rejected**
+
+Attempt 1
+
+Rejection reason:
+
+`fix your docs`
+
+Button: **Fix & resubmit**
+
+### Resubmission requirements
+
+- Preserve all previously entered fields and uploaded documents.
+- Allow the applicant to edit the necessary information instead of completing the entire application again.
+- Increment the attempt number on each resubmission.
+- Require all required steps to be saved before allowing Review and ReSubmit.
+- Create a clear history of submissions, rejection reasons, timestamps, and admin decisions.
+- Prevent applicants from modifying an application while it is pending review.
+
+After resubmission, the submit page becomes:
+
+**Application submitted**
+
+Your application is now under review. We'll notify you once an admin has reviewed it.
+
+**Pending Review**
+
+Attempt #2
+
+The admin should receive the new submission:
+
+| Agency | Owner | Attempt | Status | Submitted | Action |
+|---|---|---|---|---|---|
+| Lillith Bowman | Michael Rosa | #2 | Pending | 10/26/2026, 7:13:42 PM | Review → |
+
+Owner: Michael Rosa
+
+If approved, display the approval status for Attempt #2. If rejected again, the next resubmission becomes
+ Attempt #3. Continue the same pattern for future attempts.
+
+Keep application status and attempt history consistent across the backend and frontend.
+
+## 7. After Successful Approval
+
+After the user successfully becomes an agent:
+
+- Agency Information can be edited or updated.
+- Business Information can be edited or updated.
+- Business Hours can be edited or updated.
+- Approved documents become view-only for the agent.
+- The agent cannot edit, replace, or delete approved documents through the normal agent interface.
+- Hide Become an Agent and onboarding options.
+- Enable the Agent Dashboard.
+- Allow the agent to create services in Module 04.
+
+Do not require agents to repeat the application process for ordinary edits to their approved agency information.
+
+Keep document management separate from editable agency information. Any future document re-verification process
+ must be explicitly designed rather than silently allowing changes to approved documents.
+
+## 8. Security and Business Rules
+
+- Only authenticated customers with completed user profiles can apply.
+- Each user must have only one active agent application or agent record as appropriate.
+- Only admin can approve, reject, or mark applications under review.
+- Customers cannot access other users' private applications or documents.
+- Applicants cannot change submitted information while their application is pending review.
+- Validate all transitions on the backend.
+- Use database transactions for approval, role assignment, and related state changes.
+- Queue application emails and notifications. 'Later into Notification module, cause for now user wont get mail for this'
+- Keep application attempts and admin decisions auditable.
+- Prevent duplicate submissions, unauthorized document access, and privilege escalation.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MODULE 04 — TRAVEL SERVICES
+
+## 1. Service Creation Wizard
+
+Only approved, active agents can create travel services.
+
+### Step 1 — Basic Information
+- Title *
+- Category * — load from seeded categories.
+- Subcategory * — dynamically filter based on the selected category.
+- Tags * — require at least 3 tags.
+
+### Step 2 — Service Details
+- Short Description
+- Full Description * — minimum 600 and maximum 2,000 characters.
+- Price by default (USD) *
+- Destination Country *
+- Destination City *
+- Duration *
+- Duration Unit * — e.g., days, hours, one-time,etc...
+- What's Included * — at least one item.
+- Optional Paid Extras — additional customer-purchasable options.
+- Cancellation Policy.
+
+### Step 3 — Gallery
+Use a Fiverr-style service gallery:
+- A cover photo is mandatory.
+- Support additional gallery images.
+- Show image previews, upload progress, removal, and reordering where appropriate.
+- Validate image types, sizes, dimensions
+- Store uploaded files securely and prevent unauthorized access.
+
+### Step 4 — Requirements
+Define what the customer must provide **after payment is placed into escrow and before the booking can proceed**,
+ as part of Module 09 — Bookings i explained verywell before creating this service look/reat that module.
+
+Require at least one requirement. Each requirement contains:
+- Title *
+- Description *
+- Answer Type * — e.g., text, file, number, date, or other appropriate supported types.
+- Add any additional validation configuration needed for the selected answer type.
+
+The booking module must later use these saved requirements to collect and validate customer responses. 
+
+### Step 5 — Review
+Display all information entered in every previous steps, including details, tags, extras, cancellation policy, 
+gallery, cover image, and requirements.
+
+Follow the same save-and-continue principle as the Agent application wizard. Do not allow review or submission
+ until every required step has been successfully saved and validated. Preserve saved data when navigating between steps.
+
+### Step 6 — Submit for Review
+Submit the service for admin approval. Initially, it must not be visible in the public marketplace.
+
+Prevent duplicate submissions and record the submission timestamp and relevant review history.
+
+## 2. Admin Service Review
+
+Create an admin service review list similar to the Agent application review system.
+
+Example columns:
+
+| Title | Agent | Category | Price | Status | Review |
+|---|---|---|---|---|---|
+| Service Title | Freya Carlson | Religious Pilgrimage (Umrah/Hajj) | USD 21,221 | Pending Review | New submission · Review |
+
+Opening a service must show all submitted fields, images, requirements, extras, and relevant agent information.
+
+Example review header:
+
+**Service Title**
+
+Agent: Freya Carlson · Religious Pilgrimage (Umrah/Hajj)
+
+Status: Pending Review  
+Submission #1
+
+Actions:
+- Mark Under Review
+- Reject
+- Approve
+
+Show the message: “This service is awaiting your review.”
+
+Implement approval, rejection, and resubmission using the same core principles as Module 03 — Agent, including 
+rejection reasons, preserved service data, history, notifications, and backend-enforced transitions.
+
+**Important submission-counting rule:** Count submissions only during initial service creation and when a previously 
+rejected service is resubmitted for approval. Republish requests must not increment the service submission number. 
+Do not create a separate duplicate service for a republish request. Admin should review the existing service and 
+the latest relevant request.
+
+## 3. Service Lifecycle and Permissions
+
+Implement these distinct service statuses and transitions:
+
+- `DRAFT`
+- `PENDING_REVIEW`
+- `UNDER_REVIEW`
+- `REJECTED`
+- `PUBLISHED`
+- `UNPUBLISHED`
+- `SUSPENDED`
+
+Use consistent backend enums or equivalent constants. Define and enforce allowed transitions on the backend.
+
+### A. Initial Approval
+
+When an admin approves a newly submitted service:
+- Change its status to `PUBLISHED`.
+- Make it visible in the public marketplace.
+- Allow customers to view the service and initiate the appropriate booking flow.
+- Allow the agent to manage permitted service information.
+
+When rejected:
+- Save the rejection reason.
+- Show the rejection to the agent.
+- Allow the agent to correct the service and resubmit.
+- Increment the submission number for the new initial-approval attempt.
+- Keep the service out of the public marketplace until approved.
+- same flow as agent creation
+
+### B. Unpublish
+
+Admin can unpublish a published service.
+
+When unpublished:
+- Remove it from public marketplace listings and public service pages.
+- Preserve all service information, images, booking records, and history.
+- Agent cannot view servcie while its unpublish can just request republish.
+- Do not treat unpublishing as a new service submission.
+
+The agent can request republishing from the services list.
+
+Show a modal containing:
+- Title: **Request Republish**
+- Description: “Explain why this service should be brought back. An admin will review.”
+- Reason field.
+- Cancel and Submit Request actions.
+
+Save the request and notify the admin. The agent cannot make duplicate pending republish requests.
+
+### C. Republish Review
+
+update latest service submission status.
+so no submissions/record for republish requests
+
+The admin can approve or reject the request.
+
+**If approved:**
+- Change the existing service status to `PUBLISHED`.
+- Make it visible in the public marketplace again.
+- Preserve its original service identity and booking relationships.
+- Do not increment the service submission number.
+
+**If rejected:**
+- Keep the service `UNPUBLISHED`.
+- Save the rejection reason and request history.
+- Allow the agent to submit a new republish request later, according to the pending-request rules.
+- Do not increment the service submission number.
+
+When an agent views a rejected unpublished service, show:
+
+**Unpublished**
+
+“This service is unpublished. An admin has hidden this service from the marketplace.
+ You can request a republish from the services list.”
+
+“Previous request was rejected: [saved rejection reason]”
+
+Display the most recent rejection reason and make the request action available when permitted.
+
+### D. Suspend
+
+Suspension is an admin-only restriction and is different from unpublishing.
+
+An Admin can suspend a service only if it has **no active bookings**. 
+
+if suspended now agent cannot send any sort of req to unsuspend or publish.but admin can unsuspand any time when ever he feels ok.
+means if admin suspend service now agent cannot do anything with this service nor can view nor edit agent can just delete if that servcie isnt have any 
+previous bookings or any 
+related data, but also admin cannot suspend service if that have any active booking. cause after suspention data wont loose we have all data 
+we can show/use for any other place eg old booking with status suspended or anywhere else where needed but after suspention no one can view that service 
+not even agent.
+
+When suspended:
+- Change the status to `SUSPENDED`.
+- Remove the service from all public marketplace listings and public service pages.
+- Prevent the agent from viewing, editing, publishing, or requesting republishing of the service.
+- Prevent the agent from submitting any request to unsuspend it.
+- Allow only Admin to unsuspend it.
+- Preserve the service, its images, history, and all related records for audit and historical use.
+- Existing historical booking records must remain accessible through their authorized booking interfaces, 
+  even though the service itself is no longer viewable.
+- Do not delete or cascade-delete related records when suspending.
+
+The agent may delete a suspended service only if it has **no previous bookings and no related records that require
+ preservation**. Enforce this rule on the backend. service should never delete by admin or agent if have any related data.
+
+## 4. Public Marketplace and Service Management
+
+- Only `PUBLISHED` services are publicly discoverable.
+- Enforce visibility and authorization in backend queries and service endpoints, not just React route guards.
+- Agents should see only services they own into my service but can see all into marketplace page.
+- Suspended services must not be visible to agents through ordinary service viewing or editing interfaces.
+- Preserve existing service IDs and relationships across approval, rejection, unpublishing, republishing, and suspension.
+- Keep service creation, review requests, republish requests, and service lifecycle history separate enough to avoid
+  confusing submission attempts with later requests.
+
+## 5. Data, Validation, and Security
+
+Enforce server-side validation for every field and state transition. Protect uploads, prevent cross-agent access, 
+validate category/subcategory relationships, prevent unauthorized status changes, and use database transactions where 
+multiple records or permissions must change together.
+
+Never allow the frontend to decide whether a user is authorized or whether a service can transition to a new status.
+
+Service Categories
+
+This is category seeder containing categories, subcategories, and a `milestone_model` field.
+i have explained this into booking module for now use this and these feilds into service_categories dont show requires_packages into frontend 
+
+
+$categories = [
+            [
+                'category'             => 'Travel Packages',
+                
+                'requires_packages'=> true,
+                'milestone_model'  => '2_step',
+                'sub_category'         => [
+                    'Religious Pilgrimage (Umrah/Hajj)',
+                    'Adventure Tours',
+                    'Cultural & Historical Tours',
+                    'Family Package Tours',
+                    'Honeymoon Packages',
+                    'International Holidays',
+                    'Domestic/Local Tours',
+                ],
+            ],
+            [
+                'category'             => 'Accommodations',
+              
+                'requires_packages'=> false,
+                'milestone_model'  => '1_step',
+                'sub_category'         => [
+                    'Hotels & Resorts',
+                    'Guest Houses & Homestays',
+                    'Serviced Apartments',
+                ],
+            ],
+            [
+                'category'             => 'Transport & Tickets',
+                
+                'requires_packages'=> false,
+                'milestone_model'  => '1_step',
+                'sub_category'         => [
+                    'Flight Tickets',
+                    'Bus Bookings',
+                    'Train Tickets',
+                    'Car Rentals & Airport Transfers',
+                ],
+            ],
+        ]; 
+
+
+
+1 more feature to add in this module is currency converter just like fiverr do it during this module 
+so we dont need to udpate travel service module later for this update do only for services for now and later we will
+add currency converter into custom trip posts
+show currency converter into  profile dropdown when ever user selects currency update currency of service price. 
+also we will do this for custom travel posts so when select currency service price and custom travel post 
+price convert into selected currency.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MODULE 05 — MARKETPLACE
+
+## 1. Marketplace Navigation
+
+Display all seeded service subcategories in a horizontal navigation bar directly below the main navbar.
+Customers should be able to discover services by searching for destinations, travel types, and keywords such as:
+
+- Hunza
+- Dubai
+- Umrah
+- Hotel
+- Flight
+- Visa
+- Honeymoon
+- Family Tour
+
+Selecting a subcategory should filter marketplace results accordingly.
+
+## 2. Marketplace Results
+
+Display published services from approved agents.
+
+Example service listings:
+
+**Agency name**
+- title:
+- Full Descriptions some text 
+- Price: 
+- Rating: 
+- Reviews: 
+
+**XYZ Travels**
+- Dubai Family Holiday
+- Family holiday for happy family travel tours and advanture...
+- Rs. 220,000
+- 4.6
+- 842 reviews
+
+
+**Important:** Ratings and review counts are placeholders for future functionality. Do not create fake
+ reviews, hardcode sample ratings as real data, or implement the Reviews & Reputation module here. Display a 
+ clear placeholder such as “Ratings coming soon” and “Reviews coming soon” until real rating data is available.
+
+Build clean, responsive Fiverr-style service cards just like fiver with a service cover image, title, provider/agency name, 
+price, and appropriate provider identification.
+
+## 3. Filters
+
+Implement working marketplace filters:
+
+- Category; no need into filter cause already have below top navbar, filter category from there
+- Destination
+- Price range
+- Rating
+- Duration
+
+
+Only activate filters supported by actual service data. Since ratings, reviews, agent levels, and some
+ travel-specific information may not yet be implemented, show these as disabled or clearly marked as coming
+  soon rather than fabricating results.
+
+Filters must work together and update the displayed results correctly. Apply filtering and pagination 
+through the backend where appropriate.
+
+## 4. Sorting
+
+Provide these sorting options:
+
+- Recommended
+- Best Rated
+- Most Reviewed
+- Lowest Price
+- Most Booked
+- Newest
+
+Use actual data for each supported sorting method. Until ratings, reviews, and booking counts exist,
+ mark Best Rated, Most Reviewed, and Most Booked as coming soon or unavailable. Do not simulate rankings
+ using fake data.
+
+Recommended should use a clearly defined default ranking, and Newest should use the service creation or publication timestamp consistently.
+
+## 5. Search and Results Behavior
+
+- Search by service title, tags, destination country/city, category, and subcategory where applicable.
+- Support combined search, filters, sorting, and pagination.
+- Only display services with status `PUBLISHED`.
+- Exclude drafts, pending-review, rejected, unpublished, and suspended services from public results.
+- Enforce public visibility through backend queries, not only frontend filtering.
+- Use the existing Module 04 service and category models rather than duplicating their data.
+- Support platform-provided services and agent-provided services without confusing their ownership or provider identity.
+- Display a useful empty state when no services match the search.
+- Include loading, error, and pagination states.
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+# MODULE 06 — MESSAGING
+ now after sucessfully agent upload service and publically available now customer can message Agents
+ show message me button 
+ when click message me redirect to chatbox with that agent use laravel broadcasing 'web sockets' so without 
+ refreshing frontend user get message this conversation should be provate between agent and customer 
+ also show message me  button into agent profile.
+ 
+ Messaging Interface
+
+Build a responsive Fiverr-style chat interface with:
+Conversation list/sidebar.
+Customer or agent identity and profile information.
+Message history in chronological order.
+Message input and send action.
+Sending and error feedback.
+Unread-message indicators.
+Loading, empty, and connection-error states.
+Responsive layout for desktop and mobile.
+
+keep security in mind this is private conversation between any customer any agent 1-on-1.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MODULE 07 — TRAVEL POSTS and TRAVEL REQUESTS
+
+This is the Upwork Brif equivalent
+but here we have 2 scenarios
+1. global trip post, 
+2. specific agents service trip request.
+
+
+
+Scenario 1 GlobalPost 
+if Customer doesn't find exactly what they want.
+
+They click:
+Post a Custom Trip modal opens
+Example
+
+title *
+descr* mix 300/max 1200 char
+category *
+sub category * so this post get milestone so in future in booking module we should know this is 1-step model or 2-step 
+duration *
+destination * country/city
+date *
+travels * total,adult,child
+budget * min/max ; currency should be dollar by deafult
+services_needed * 
+requirnments 
+etc...
+
+Post/Upload.
+
+
+now agents can apply for that post 
+they click view detail from travel post page 
+show detailed post 
+and below request show card 
+Submit an offer so agent can submit an offer without redirecting into another page
+Submitting an offer costs 6 'this number should be come from backend not frontend so can be increasble later in future' connects.
+
+Amount *
+Duration * unit * eg days/one-time/hour
+Message *
+
+Requirements the customer will fill at booking *
+Add at least 2 requirements. These become the customer's requirements form after they accept your offer.
+
+Add requirement
+eg 
+Requirement #1
+Title (e.g. Passport scan)  *
+Text 
+Description (optional)
+
+What's included 
+Itinerary (optional)
+
+Submit offer 
+
+now customer get offer can shortlist/accept/reject.
+
+the flow
+
+Global Post
+Customer
+    ↓
+Travel Post's [same page like upwork no small card a complete row card 'i want this page same as upwork https://www.upwork.com/nx/find-work/' page]
+    ↓
+interested Agents with connets/points can apply only 
+    ↓
+Agents Submit Offers 
+
+
+
+Scenario 2 Specific agent's service trip request 
+
+in this scenario 
+customer get what they want example they want dubai trip for 7 days but probelm is customer wants to go for 10 days but service showing 7 days
+so here this scenario starts 
+customer will click request trip post from service detail page below book now button and above message agent button
+when click redirect to another page with feilds eg;
+travelers *
+long descr * min 300/max 1200 char
+Preferred travel date *
+Duration * Unit eg days/hours/one-time
+Travelers *Adults/Children
+Budget min in dollar
+Budget max in dollar
+Additional requirements
+
+when click 'send reuest' agent should recive this request into messagebox/chatbox of that customer 
+'same as fiver request quote'. dont create another conversation/message box 
+whenever customer request trip or send message, 'messages/specific request' should
+show into their existing chat 'if have any chat between them' 
+show request like this 
+Private trip request from 'customer user name'
+Subject: service title eg '7-Day Romantic Maldives Honeymoon Package'
+View Request 
+
+eg 
+status Open
+Posted 10/27/2026
+7-Day Romantic Maldives Honeymoon Package 'servcie title'
+we wanna go Dubai 10-Day Family Package 'description'
+
+Destination
+Male, Maldives
+
+Travel date
+11/13/2026
+
+Duration
+7 days
+
+Travelers
+1 (1 adults)
+
+Budget
+USD 3232 – 4233
+
+ then a card below request for agent to Submit an offer same as global post but this time no connects cause its service booking not on offer 
+ agent sending offer of his service request not global 'explains below'
+
+Amount *
+Duration * unit * eg days/one-time/hour
+Message *
+
+Requirements the customer will fill at booking *
+Add at least 2 requirements. These become the customer's requirements form after they accept your offer.
+
+Add requirement
+eg 
+Requirement #1
+Title (e.g. Passport scan)  *
+Text 
+Description (optional)
+
+What's included 
+Itinerary (optional)
+
+Submit offer 
+Reject Offer 
+in same page agent will submit his offer.
+
+if submit 
+customer will see 
+request accepted 'view offer' into same chat
+now when view show travel post offer page  with
+reject/accept 
+if reject then notify agent 'notification module' and show offer rejected into agents my offers page
+
+if accept redirect customer into payment page 'but for now we donnot have payment so show booking coming soon'.
+
+
+
+this module is same as upwork job system clients post jobs/work sellers find job/work bid for that job/work client get the offers, random highest bid 
+offers at the top of the list , client review those offers, then select eligible one.
+
+same formula will be apply here agents have to buy points/connects[or any other name should be chnageable]  from application like upwork, agensts 
+buy connects/points then can apply. so there will be 2 earning points for agent, first is marketplace bookings by services 
+ so after sucessfull completed booking platform commission will be 2% agent will get 98% of total amount after sucessfull booking completetion.
+ either booking is from direct service or service request trip booking. 
+
+ and second is travel posts customer will post trips globally agents will bid and submit their offers 
+ customer choose any of them accept offer booking start 'explained in boking module'
+
+
+but as we disscess that we will do finance/payment at the very end so for now give 200 points/connects to each agent just after 
+admin apporves that agent. this is temporary for development and testing. and when agent click buy points/connects
+also show this into below the same page
+show this page
+select connects/points 
+Buy Connects
+Your available Connects
+0
+Select the amount to buy
+100 for $10.00
+150 for $15.00
+200 for $20.00
+etc... like upwork, make till this page and show contiue button 
+when click continue redirect into payment method page but for now onlcick 'continue' show 
+module 10 finance comming soon  .
+
+Important: Award the 200 Connects only once when an agent is approved first time not again and again and this award 
+is temporary when we will build finance and paymnet remove, delete this logic code of giving 200 points/connects.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MODULE 08 — BOOKING
+
+Part 1: Module 07 Architecture Refinements & Core Initiation Flows
+
+
+FLOW 1: STANDARD BOOKING (From Fixed Service Marketplace)
+==================================================================================================
+[Customer visits Service] ➔ [Clicks Book] ➔ [Pays 100% Upfront to Platform Escrow Vault]
+                                                             │
+                                                             ▼
+                                             [Customer fills Requirements Form] this is what agent added while creating service 
+                                  (Uploads Passports, Travelers, Input Expected Dates,etc...)
+                                                             │
+                                                             ▼
+                                            [Status: REQUESTED / UNDER REVIEW]
+                                                             │
+                    ┌────────────────────────────────────────┴────────────────────────────────────────┐
+                    ▼ (If Rejected)                                                                   ▼ (If Valid/Accepted)
+       [100% Direct Reverse-Charge to Card]                                                   [Status Shifts to: IN_PROGRESS]
+       (Bypasses platform wallet balance)                                                     (Module 08 Starts)
+
+==================================================================================================
+FLOW 2: GLOBAL CUSTOM TRIP/Travel POST (Upwork-style Board)
+==================================================================================================
+[Customer Travel Posts ] ➔ [Agent Spends Connects to Apply] ➔ [Agent attaches Custom Offer Details]
+                                                                        (Price + Unique Field + Requirements + long descr,etc... 'already expalined into moduel 07' )
+                                                                                     │
+                                                                                     ▼
+                                                                      [Customer Accepts Offer & Pays 100%]
+                                                                                     │
+                                                                                     ▼
+                                                                      [Customer Fills Requirements Form + descr ]
+                                                                                     │
+                                                                                     ▼
+                                                                     [Status: REQUESTED / UNDER REVIEW]
+                                                                                     │
+                    ┌────────────────────────────────────────┴────────────────────────────────────────┐
+                    ▼ (If Agent Rejects)                                                              ▼ (If Agent Accepts)
+       [100% Direct Reverse-Charge to Card]                                                   [Status Shifts to: IN_PROGRESS]
+
+==================================================================================================
+FLOW 3: AGENT SERVICE CUSTOM REQUEST 
+==================================================================================================
+[Customer visits '15 Day Umrah Package'] ➔ [Clicks 'Request Trip'] ➔ [Fills Custom Form: duration, Budget, Travelers, long descr,and more etc.... ]
+                                                                                     │
+                                                                                     ▼
+                                                                     [Agent gets Private Request into mesage box same as fiverr 'Request Quote' ]
+                                                                     (Tagged with original Service Title)
+                                                                                     │
+                                   ┌─────────────────────────────────────────────────┴─────────────────────────────────────────────────┐
+                                   ▼ (If Rejected)                                                                                     ▼ (If Accepted)
+                            [Notify Customer] ➔ [End]                                                                          [Agent clicks "Send Custom Offer"]
+                                                                                                                               (Attaches custom pricing & custom requirements 'explained above into moduel 07')
+                                                                                                                                       │
+                                                                                                                                       ▼
+                                                                                                                       [Customer views private offer]
+                                                                                                                       [Customer clicks Accept & Pays 100%]
+                                                                                                                                       │
+                                                                                                                                       ▼
+                                                                                                                       [Customer Fills Requirements Form]
+                                                                                                                                       │
+                                                                                                                                       ▼
+                                                                                                                       [Status: REQUESTED / UNDER REVIEW]
+                                                                                                                                       │
+                                                                                   ┌───────────────────────────────────────────────────┴───────────────────────────────────────────────────┐
+                                                                                   ▼ (If Agent Rejects)                                                                                    ▼ (If Agent Accepts)
+                                                                      [100% Direct Reverse-Charge to Card]                                                                         [Status Shifts to: IN_PROGRESS]
+
+
+
+
+Part 2: Module 08 Execution Engine & Dynamic Category Milestone Matrix
+
+The system maps the selected sub-category directly to one of two unified milestone structures using pure
+ "Document Review" terminology:
+
+
+1. Packages
+
+Main Category
+Travel Packages
+
+Sub-Categories 'already described into service moudle'
+• Religious Pilgrimage
+• International Holidays
+• Domestic/Local Tours
+• Honeymoon/Adventure
+
+Milestone Structure
+2-Step Model
+(70% / 30% Split)
+
+
+Phase 1 Release Trigger (Supplier Protection)
+70% Released: When core booking documents (PNRs, flight references, and initial lodging reservations) are uploaded and
+ pass the 72-Hour Verification Window.
+
+Phase 2 Release Trigger (Final Delivery & Review)
+30% Released: When all final travel documents (printable e-tickets, insurance, itineraries) are uploaded and pass the
+ 7-Day Inspection Window (or user clicks Approve)
+
+
+
+2. Accommodations
+
+Main Category
+Accommodations
+
+
+Sub-Categories
+• Hotels & Resorts
+• Guest Houses/Homestays
+• Serviced Apartments
+
+Milestone Structure
+1-Step Document Review Release
+(100% Escrow)
+
+Phase 1 Release Trigger (Supplier Protection)
+100% Held in Escrow: No early payout. Funds remain entirely locked within the platform secure vault during initial 
+document submission
+
+Phase 2 Release Trigger (Final Delivery & Review)
+100% Released: Only after the agent uploads the final official booking documents containing check-in codes, 
+and the customer reviews and approves them (or the inspection window expires).
+
+
+3. Transport & Ticketing
+Main category 
+Transport & Ticketing
+
+Sub-categories 
+• Flight Tickets
+• Bus Bookings
+• Train Tickets
+
+
+Milestone Structure
+1-Step Document Review Release
+(100% Escrow)
+
+
+Phase 1 Release Trigger (Supplier Protection)
+100% Held in Escrow: No early payout. Funds remain entirely locked within the platform secure vault during initial 
+document submission
+
+Phase 2 Release Trigger (Final Delivery & Review)
+100% Released: Only after the agent uploads the live transport booking documents, and the customer reviews and
+ approves the structural details.
+
+
+
+2. Step-by-Step Payment & Booking Lifecycle Workflow
+
+
+[Customer Checkout/BookService/AcceptOffer] ➔ Pays 100% Upfront into Platform Escrow Vault ➔ Submit Requirements & Request Booking
+                              │
+                              ▼
+[Agent Reviews Requirements] ➔ If invalid: Triggers "Refill Requirements" (7-Day Auto-Cancel Guard)
+                              │ If valid: Agent clicks "Accept Booking"
+                              ▼
+                        Status Shifts to: IN_PROGRESS
+                              │
+       ┌──────────────────────┴──────────────────────┐
+       ▼ (For 2-Step Travel Packages)                ▼ (For 1-Step Accommodations & Transport)
+[Agent Uploads Core Documents]                [Agent Uploads Final Booking Documents]
+       │                                             │
+       ▼ (Triggers 72-Hr Verification Window)        ▼ (Triggers 7-Day Customer Review Window)
+🔓 Phase 1: 70% Funds Released to Agent              │
+       │                                             │
+       ▼                                             │
+[Agent Uploads Final Travel Documents]               │
+       │                                             │
+       ▼ (Triggers 7-Day Inspection Window)          ▼
+🔓 Phase 2:                                    🔓 Final Release:
+   • Marketplace Service: Release 28%              • Marketplace Service: Release 98%
+   • Custom Trip Post:    Release 30%              • Custom Trip Post:    Release 100%
+       │                                             │
+       ▼                                             ▼
+[Booking Status] ➔ COMPLETED                  [Booking Status] ➔ COMPLETED
+
+ The Dynamic Commission Business Logic
+
+The system tracks the payout splits at the database level by looking at how the booking started:
+• Scenario A: Marketplace Services (Standard Booking & Agent Service Request Trip)
+	• The Rule: The customer browsed the platform's public listings. There is no Connect fee for the agent, so the platform takes a 2% commission upon success.
+	• The Math: Agent receives 98% of the total funds.
+		• 2-Step Model: Phase 1 releases 70%. Phase 2 releases 28% (Total: 98%).
+		• 1-Step Model: Final approval releases 98% instantly.
+• Scenario B: Custom Trip Posts (Global Travel Board)
+	• The Rule: The agent spent their paid Connects/Points to pitch for this client. To keep the platform attractive for high-quality bidders, 0% commission is charged on these wins.
+	• The Math: Agent receives 100% of the total funds.
+		• 2-Step Model: Phase 1 releases 70%. Phase 2 releases 30% (Total: 100%).
+		• 1-Step Model: Final approval releases 100% instantly.
+
+
+3. Trust Framework: Security Rules & The Verification Loop
+
+To protect the customer's funds across both models, the platform runs a three-tiered automated safety pipeline:
+
+• Simplified Independent Customer Verification: The moment an agent uploads any travel document file (PDF or Image), 
+the customer's active order interface generates a clean dashboard action widget reading:
+	• “The agent has submitted official travel documents. Please click [View Uploaded Document] to review the 
+   credentials. Verify that your names and dates etc.. are correct. For local transport or hotels without websites, 
+   please use the contact details provided inside the document to call/email the supplier directly and verify your
+   reservation before approving the release of funds.”
+
+
+• The 72-Hour Verification Window (For 2-Step Packages): Once the agent uploads Phase 1 documents, a timer gives
+ the client exactly 72 hours to cross-check the references. If the customer clicks "Looks Good Continue" or lets the 72 hours
+  lapse without filing a dispute, the system presumes legitimacy and unlocks the 70% escrow portion so the agent can 
+   finalize payments with external suppliers.
+
+• The 7-Day Inspection & Review Window (For Final Releases): For Phase 2 of packages, or the 100% release of 
+Accommodations and Transport, the agent does not receive money until the customer explicitly clicks "Approve & Fund"
+ or the 7-day safety timer runs out. If the customer spots an error, they click "Request Resubmit 'with reason'",
+ which immediately  locks the funds in escrow and pauses all countdown clocks until the agent uploads fixed documents.
+ 
+• Post-Release Fraud Clawback & Safety Net: If an agent maliciously cancels an accommodation or flight reservation 
+after a milestone release, the platform deploys its Bonded Safety Pool (funded by transaction commissions) to 
+refund the customer. Concurrently, the agent's account is permanently banned, active wallets are frozen, and the file 
+is routed directly to collections.
+
+• The "Refill Requirements" Ghosting: What happens if a customer pays, the agent asks them to refill 
+broken requirements, and the customer disappears for weeks? the rule is If a customer fails to 
+fix their requirements within 7 days of an agent's request, the booking is automatically cancelled, and the 
+money is returned to the customer.
+
+
+
+in this module where ever we need payment/finnance,show finance/payment comming soon with next available development step like 
+when customer book service or accept offer so show finance comming soon and submit requirnments button also
+when customer reviews phase 1 and accept show 70 persend released finace soon, and more  etc.....
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MODULE 09 — REVIEWS 
+
+Customer reviews:
+
+Overall Rating
+Service Quality
+Communication
+Value
+Accuracy
+Written Review: a text comment describing the customer's experience.
+
+
+Review belongs to:
+
+Customer
+Booking
+Service
+Rating
+Reviews
+Completed Bookings
+Cancellation Rate
+Response Rate
+
+only customers who have completed booking can review not everyone.
+
+
+
+
+
+
+
+
+
+
+
+
+
+MODULE 10 — Notifications
+This module will notify customers, agents, and admins when important events happen across the Travel Marketplace.
+
+Recommendation: Build notifications as a separate, reusable module. Other modules will trigger notification events, and Module 09 will deliver
+them without tightly coupling notification logic to booking, messaging, or finance.
+
+
+1. Notification events
+
+Module	Event	Recipient
+Agent onboarding	Agent Application Submitted	Admin
+Agent onboarding	Agent Approved	Agent
+Agent onboarding	Agent Rejected	Agent
+Travel Services	Service Submitted	Admin
+Travel Services	Service Approved	Agent
+Travel Services	Service Rejected	Agent
+Booking & Orders	New Booking	       Agent
+Booking & Orders	Booking Accepted	Customer
+Booking & Orders	Booking Cancelled	Customer and Agent
+Booking & Orders	Travel Requirements Submitted	Agent
+Booking & Orders	Travel Documents Ready	Customer
+
+Messaging	New Message	Other conversation participant
+Travel Posts	New Custom Request	approved agents
+Travel Posts	New Offer	Customer who posted the request
+Travel Posts	Offer Accepted	Selected agent
+Reviews	New Review	Reviewed agent
+Reviews	Review Reply	Customer
+
+in future when we will build finnance module not now
+Finance	Payment Successful	Customer and Agent, as appropriate
+Finance	Refund Processed	Customer
+Finance	Payout Processed	Agent
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MODULE 11 — SYSTEM / ANALYTICS
+
+
+Two types of activity tracking
+
+A. Agent Activity & Performance
+Agent dashboard — Fiverr-style
+
+
+This shows agents their own business activity, progress, and performance.
+- Services created, submitted, approved, rejected, or paused.
+- Custom travel requests applied to and offers submitted.
+- Bookings received, accepted, completed, and cancelled.
+- Customer reviews and ratings.
+- Response rate and response time.
+- Connects earned, spent, and remaining, once the Connects system is integrated.
+- Account warnings, restrictions, or suspension notices.
+Visibility: Each agent can see their own activity and performance, not another agent's private information.
+
+
+B. Platform / Admin Audit Log
+Restricted internal administration
+
+
+This records detailed, attributable actions across the platform for security, investigations, and accountability.
+- Admin approved, rejected, or suspended an agent.
+- Admin approved or rejected a service.
+- Roles, permissions, and account status changed.
+- Booking status, cancellation, and dispute decisions changed.
+- Finance actions, refunds, commission adjustments, and payouts after Finance Module exists.
+- Sensitive administrative settings changed.
+- Failed authorization attempts and relevant security events.
+Visibility: Only administrator/platfrom can access the audit logs.
+
+
+Example: one action, two records
+When an admin approves an agent:
+
+Agent activity log
+“Congratulations! Your agent application has been approved.”
+
+
+Admin audit log
+Records administrator approved which application, when it happened, and the relevant status change.
+
+
+The two records serve different purposes. The agent receives a useful activity entry, while the platform retains the detailed administrative record.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MODULE 12 — Dashboards
+
+
+1. Admin dashboard
+
+Admin Dashboard
+Full platform management
+
+
+Overview
+
+Customers
+Manage accounts
+
+Agents  
+Applications and status
+
+Services
+Approval and moderation
+
+Trust & Safety
+Reports and disputes
+
+Complete sidebar structure
+
+- Dashboard
+- Customers
+- Agents
+  - All Agents
+  - Pending Applications
+  - Approved
+  - Rejected
+  - Suspended
+- Services
+  - All Services
+  - Pending Approval
+  - Published
+  - Rejected 
+  - Suspended
+- Travel Requests
+- Bookings 'sort by agent' 
+- Reviews & Reputation 'sort by agent'
+- Messages & Reports
+- Trust & Safety
+  - Service Reports
+  - Booking Reports
+  - Disputes
+- Categories
+- Notifications
+- System Activity & Audit Logs
+- Analytics
+- Settings
+- Finance & Payments (Module Finance, integration later) just show into sidebar when click show comming soon.
+  - Payments
+  - Refunds
+  - Commissions
+  - Agent Earnings
+  - Payouts
+
+Do not display fabricated payment or earnings figures.
+
+
+
+
+
+2. Agent dashboard
+
+Agent Dashboard
+Manage your travel business
+
+Overview metrics
+
+Published Services
+—
+
+Active Bookings
+—
+Completed bookings
+—
+
+Available Connects
+200
+for now 200 when finance will build then show actual connects agent purchased.
+
+Average Rating
+—
+
+Total reviews
+—
+
+Dashes represent live data not yet connected, not zero-valued business metrics, show actual data not fake data.
+
+
+Sidebar structure
+- Dashboard
+- My Services
+  - All Services
+  - Create Service
+  - Pending Review
+  - Published
+  - Rejected
+  
+
+- Agency Profile
+- Business Information includes  documents 'view only'.
+- Business Hours
+- Personal Info 
+- My Offers 
+- Connects
+- Bookings 
+- Reviews & Reputation
+- Activity log
+- Earnings & Payouts (Coming Soon until Module Finance)
+- Settings
+
+The agent should only access business features once approved. Agents with pending, rejected, or suspended status 
+should see the appropriate application or account-status screen instead of unrestricted dashboard access.
+
+
+
+
+
+3. Customer dashboard
+
+Customer Dashboard
+Plan and manage your trips
+
+Sidebar structure
+- Dashboard
+- My Bookings
+- My Travel Posts
+- Offers Received
+- My Reviews
+- Notifications
+- Profile & Settings
+
+Customers can browse and purchase services, create custom travel posts, compare agent offers, communicate with agents,
+ and manage bookings. Payment-dependent actions should display the Finance Coming Soon flow until Module Finance is ready.
+
+

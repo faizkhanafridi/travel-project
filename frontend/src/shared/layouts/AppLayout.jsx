@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { LogOut, User, Settings } from "lucide-react";
+import { LogOut, User, Settings, ShieldCheck } from "lucide-react";
 import Logo from "../components/Logo";
 import Button from "../components/Button";
 import useAuthStore from "../stores/authStore";
@@ -64,6 +64,17 @@ export default function AppLayout() {
                         {user?.account_type?.replace("_", " ")}
                       </p>
                     </div>
+                    {user?.roles?.includes("super_admin") && (
+                      <button
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          navigate("/admin/agents");
+                        }}
+                      >
+                        <ShieldCheck size={16} /> Admin panel
+                      </button>
+                    )}
                     <button
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
                       onClick={() => {
@@ -73,16 +84,20 @@ export default function AppLayout() {
                     >
                       <User size={16} /> Profile
                     </button>
-             <button
-  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
-  onClick={() => {
-    setMenuOpen(false);
-    navigate(user?.has_password ? '/change-password' : '/set-password-account');
-  }}
->
-  <Settings size={16} />
-  {user?.has_password ? 'Change password' : 'Set password'}
-</button>
+                    <button
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        navigate(
+                          user?.has_password
+                            ? "/change-password"
+                            : "/set-password-account",
+                        );
+                      }}
+                    >
+                      <Settings size={16} />
+                      {user?.has_password ? "Change password" : "Set password"}
+                    </button>
                     <button
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-danger hover:bg-danger/5"
                       onClick={handleLogout}

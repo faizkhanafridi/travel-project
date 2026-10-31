@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Auth\AccountType;
+use App\Models\Agent\Agent;
 use App\Models\Auth\SocialAccount;
 use App\Models\UserProfile\UserProfile;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -59,4 +60,9 @@ class User extends Authenticatable
     {
         return $this->hasOne(UserProfile::class);
     }
+
+    public function agent()
+{
+    return $this->hasOne(Agent::class);
+}
 }

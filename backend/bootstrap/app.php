@@ -28,10 +28,22 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/user-profile.php'));
+
+            // MODULE 03 AGENT
+
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/agent.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi(); // Sanctum SPA cookie authentication
+        $middleware->alias([
+              'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+    'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+    'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+    'agent.approved' => \App\Http\Middleware\Agent\EnsureAgentApproved::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (\Illuminate\Validation\ValidationException $e, $request) {

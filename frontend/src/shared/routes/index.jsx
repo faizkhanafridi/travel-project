@@ -28,6 +28,14 @@ import SocialCallbackPage from "../../modules/auth/pages/SocialCallbackPage";
 import ProfileSetupPage from "../../modules/profile/pages/ProfileSetupPage";
 import MyProfilePage from "../../modules/profile/pages/MyProfilePage";
 import PublicProfilePage from "../../modules/profile/pages/PublicProfilePage";
+
+// MODULE 03      AGENTS
+import AgentApplicationPage from '../../modules/agent/pages/AgentApplicationPage';
+import AgentStatusPage from '../../modules/agent/pages/AgentStatusPage';
+import AdminAgentsListPage from '../../modules/agent/pages/admin/AdminAgentsListPage';
+import AdminAgentDetailPage from '../../modules/agent/pages/admin/AdminAgentDetailPage';
+
+
 export const router = createBrowserRouter([
   // Guest-only auth pages
   {
@@ -70,10 +78,15 @@ export const router = createBrowserRouter([
           { path: "/profile", element: <MyProfilePage /> },
           { path: "/profile-setup", element: <ProfileSetupPage /> },
           { path: "/u/:username", element: <PublicProfilePage /> },
-          {
-            path: "/become-agent",
-            element: <ComingSoonPage title="Become an Agent — Module 03" />,
-          },
+      
+
+          // Agent (Module 03)
+{ path: '/become-agent', element: <AgentApplicationPage /> },
+{ path: '/agent', element: <AgentStatusPage /> },
+
+// Admin (Module 03) — backend guards via role:super_admin
+{ path: '/admin/agents', element: <AdminAgentsListPage /> },
+{ path: '/admin/agents/:uuid', element: <AdminAgentDetailPage /> },
         ],
       },
     ],
