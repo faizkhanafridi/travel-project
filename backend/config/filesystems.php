@@ -38,23 +38,13 @@ return [
             'report' => false,
         ],
 
-        // 'public' => [
-        //     'driver' => 'local',
-        //     'root' => storage_path('app/public'),
-        //     'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
-        //     'visibility' => 'public',
-        //     'throw' => false,
-        //     'report' => false,
-        // ],
-
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL') . '/storage',
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
             'visibility' => 'public',
             'throw' => false,
-            'profile_photo_disk' => env('PROFILE_PHOTO_DISK', 'public'),
-            'profile_photo_path' => env('PROFILE_PHOTO_PATH', 'user-profiles/photos'),
+            'report' => false,
         ],
 
         's3' => [

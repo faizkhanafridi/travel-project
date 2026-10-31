@@ -1,10 +1,10 @@
 <?php
+// bootstrap/app.php
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Support\Facades\Route;
-
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,92 +13,30 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__ . '/../routes/console.php',
         channels: __DIR__ . '/../routes/channels.php',
         health: '/up',
+        apiPrefix: 'api',
         then: function () {
-
-            // MODULE 01 AUTHENTICATION
+            // Module route files – one per module, no v1 prefix
             Route::middleware('api')
-                ->prefix('api')
+                ->prefix('api/auth')
                 ->group(base_path('routes/auth.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/auth.php'));
-
-            // MODULE 02 USER PROFILE 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/user-profile.php'));
-
-            // MODULE 03 AGENT
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/agent.php'));
+            // future: user-profile.php, agent.php, etc.
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->statefulApi(); // Sanctum SPA cookie authentication
+        $middleware->statefulApi();
+        $middleware->api(prepend: [
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+        ]);
         $middleware->alias([
-              'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-    'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
-    'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-    'agent.approved' => \App\Http\Middleware\Agent\EnsureAgentApproved::class,
+            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'The given data was invalid.',
-                    'data' => null,
-                    'errors' => $e->errors(),
-                ], 422);
-            }
-        });
-
-        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthenticated.',
-                    'data' => null,
-                    'errors' => null,
-                ], 401);
-            }
-        });
-
-        $exceptions->render(function (\Illuminate\Auth\Access\AuthorizationException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This action is unauthorized.',
-                    'data' => null,
-                    'errors' => null,
-                ], 403);
-            }
-        });
-
-        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Resource not found.',
-                    'data' => null,
-                    'errors' => null,
-                ], 404);
-            }
-        });
-
-        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException $e, $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Too many requests. Please try again later.',
-                    'data' => null,
-                    'errors' => null,
-                ], 429)->withHeaders($e->getHeaders());
-            }
-        });
+        //
     })
+    ->withProviders([
+        \App\Providers\RepositoryServiceProvider::class,
+    ])
     ->create();

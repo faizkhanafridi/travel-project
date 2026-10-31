@@ -1,10 +1,10 @@
 <?php
+// app/Providers/AppServiceProvider.php
 
 namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -12,93 +12,44 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Bind repository interfaces → Eloquent implementations.
-
-        // MODULE 01 AUTHENTICATION
-
-        $this->app->bind(
-            \App\Repositories\Contracts\Auth\PendingRegistrationRepositoryInterface::class,
-            \App\Repositories\Eloquent\Auth\PendingRegistrationRepository::class,
-        );
-        $this->app->bind(
-            \App\Repositories\Contracts\Auth\UserRepositoryInterface::class,
-            \App\Repositories\Eloquent\Auth\UserRepository::class,
-        );
-        $this->app->bind(
-            \App\Repositories\Contracts\Auth\SocialAccountRepositoryInterface::class,
-            \App\Repositories\Eloquent\Auth\SocialAccountRepository::class,
-        );
-
-
-        // MODULE 02 USER PROFILE 
-
-        $this->app->bind(
-            \App\Repositories\Contracts\UserProfile\UserProfileRepositoryInterface::class,
-            \App\Repositories\Eloquent\UserProfile\UserProfileRepository::class,
-        );
-        $this->app->bind(
-            \App\Repositories\Contracts\UserProfile\LanguageRepositoryInterface::class,
-            \App\Repositories\Eloquent\UserProfile\LanguageRepository::class,
-        );
-        $this->app->bind(
-            \App\Repositories\Contracts\UserProfile\EmailChangeRequestRepositoryInterface::class,
-            \App\Repositories\Eloquent\UserProfile\EmailChangeRequestRepository::class,
-        );
-
-
-        $this->app->bind(
-            \App\Repositories\Contracts\Agent\AgentRepositoryInterface::class,
-            \App\Repositories\Eloquent\Agent\AgentRepository::class,
-        );
+        //
     }
 
     public function boot(): void
     {
-
-        // MODULE 01 AUTHENTICATION
-
-        // Login: 5 attempts / minute per email+IP.
-        RateLimiter::for('auth.login', function (Request $request) {
-            return Limit::perMinute(5)->by(
-                $request->input('email') . '|' . $request->ip()
-            );
+        // Authentication rate limits
+        RateLimiter::for('auth-login', function (Request $request) {
+            $key = strtolower($request->input('email', '') . '|' . $request->ip());
+            return Limit::perMinute(5)->by($key)
+                ->response(fn () => response()->json(['message' => 'Too many attempts. Try again shortly.'], 429));
         });
 
-        // Register / forgot / resend: 3 / minute per IP.
-        RateLimiter::for('auth.registration', function (Request $request) {
-            return Limit::perMinute(3)->by($request->ip());
+        RateLimiter::for('auth-register', fn (Request $r) => Limit::perHour(5)->by($r->ip()));
+
+        RateLimiter::for('auth-verify', function (Request $r) {
+            return Limit::perMinutes(10, 5)->by(strtolower($r->input('email', '')) . '|' . $r->ip());
         });
 
-        // Verify email: 6 / minute per email+IP.
-        RateLimiter::for('auth.verify', function (Request $request) {
-            return Limit::perMinute(6)->by(
-                $request->input('email') . '|' . $request->ip()
-            );
+        RateLimiter::for('auth-resend', fn (Request $r) => Limit::perMinutes(5, 3)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
+
+        RateLimiter::for('auth-forgot', fn (Request $r) => Limit::perHour(3)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
+
+        RateLimiter::for('auth-reset', function (Request $r) {
+            return Limit::perMinutes(10, 5)->by(strtolower($r->input('email', '')) . '|' . $r->ip());
         });
 
-        // Social login: 10 / minute per IP.
-        RateLimiter::for('auth.social', function (Request $request) {
-            return Limit::perMinute(10)->by($request->ip());
+        RateLimiter::for('auth-social', fn (Request $r) => Limit::perHour(10)->by($r->ip()));
+
+        RateLimiter::for('auth-logout', fn (Request $r) => Limit::perMinute(10)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('auth-change-password', fn (Request $r) => Limit::perMinutes(10, 5)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('auth-onboarding', fn (Request $r) => Limit::perHour(20)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('auth-mfa-setup', fn (Request $r) => Limit::perMinutes(10, 5)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('auth-mfa-verify', function (Request $r) {
+            return Limit::perMinutes(10, 5)->by(session('2fa:user_id') ?? $r->ip());
         });
-
-
-
-        // MODULE 02 USER PROFILE 
-
-        RateLimiter::for('profile.email.change', function (Request $request) {
-            return Limit::perMinute(3)->by($request->user()?->id . '|' . $request->ip());
-        });
-
-        RateLimiter::for('profile.email.verify', function (Request $request) {
-            return Limit::perMinute(6)->by($request->user()?->id . '|' . $request->ip());
-        });
-
-        RateLimiter::for('profile.write', function (Request $request) {
-            return Limit::perMinute(20)->by($request->user()?->id . '|' . $request->ip());
-        });
-
-
-
-        Gate::policy(\App\Models\Agent\Agent::class, \App\Policies\Agent\AgentPolicy::class);
     }
 }

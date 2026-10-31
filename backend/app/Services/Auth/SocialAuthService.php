@@ -1,82 +1,69 @@
 <?php
+// app/Services/Auth/SocialAuthService.php
 
 namespace App\Services\Auth;
 
-use App\Enums\Auth\AccountType;
-use App\Enums\Auth\RoleName;
-use App\Models\User;
-use App\Repositories\Contracts\Auth\SocialAccountRepositoryInterface;
+use App\Enums\Auth\UserRole;
+use App\Enums\Auth\UserStatus;
+use App\Models\Auth\User;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialUser;
 
 class SocialAuthService
 {
-    public function __construct(
-        private UserRepositoryInterface $userRepo,
-        private SocialAccountRepositoryInterface $socialRepo,
-    ) {}
+    public function __construct(private UserRepositoryInterface $userRepo) {}
 
-    public function redirect(string $provider)
+    public function redirectUrl(string $provider): string
     {
-        return Socialite::driver($provider)->redirect();
+        return Socialite::driver($provider)
+            ->stateless(false)
+            ->with(['prompt' => 'select_account'])
+            ->redirect()
+            ->getTargetUrl();
     }
 
-    public function callback(string $provider): User
+    public function handleCallback(string $provider): User
     {
-        $socialUser = Socialite::driver($provider)->user();
+        /** @var SocialUser $social */
+        $social = Socialite::driver($provider)->stateless(false)->user();
 
-        // 1. Already linked social account?
-        $linked = $this->socialRepo->findByProvider($provider, (string) $socialUser->getId());
-
-        if ($linked) {
-            return $linked->user;
+        $email = $social->getEmail();
+        if (! $email) {
+            throw new \RuntimeException('No email returned from provider.');
         }
 
-        // 2. Existing user with same verified email? Link it.
-        if ($socialUser->getEmail()) {
-            $existing = $this->userRepo->findByEmail($socialUser->getEmail());
-
+        return DB::transaction(function () use ($provider, $social, $email) {
+            $existing = User::where('email', $email)->first();
             if ($existing) {
-                $this->socialRepo->create([
-                    'user_id' => $existing->id,
-                    'provider' => $provider,
-                    'provider_user_id' => (string) $socialUser->getId(),
-                ]);
-
-                // Ensure email is marked verified because the provider verified it.
-                if (! $existing->email_verified_at) {
-                    $this->userRepo->markEmailVerified($existing);
+                if ($provider === 'google' && ! $existing->google_id) {
+                    $existing->google_id = $social->getId();
                 }
-
-                return $existing->refresh();
+                if ($provider === 'facebook' && ! $existing->facebook_id) {
+                    $existing->facebook_id = $social->getId();
+                }
+                $existing->save();
+                Auth::login($existing, true);
+                request()->session()->regenerate();
+                return $existing;
             }
-        }
-
-        // 3. Brand new user — social email is verified by the provider.
-        $user = DB::transaction(function () use ($provider, $socialUser) {
-            $email = $socialUser->getEmail() ?? Str::uuid().'@social.local';
 
             $user = $this->userRepo->create([
+                'name' => $social->getName() ?: Str::before($email, '@'),
                 'email' => $email,
                 'password' => null,
                 'email_verified_at' => now(),
-                'account_type' => AccountType::CUSTOMER,
-                'onboarding_completed' => false,
+                'status' => UserStatus::ACTIVE->value,
+                'google_id' => $provider === 'google' ? $social->getId() : null,
+                'facebook_id' => $provider === 'facebook' ? $social->getId() : null,
             ]);
-
-            $user->assignRole(RoleName::CUSTOMER->value);
-
-            $this->socialRepo->create([
-                'user_id' => $user->id,
-                'provider' => $provider,
-                'provider_user_id' => (string) $socialUser->getId(),
-            ]);
-
+            $this->userRepo->assignRole($user, UserRole::CUSTOMER->value);
+            Auth::login($user, true);
+            request()->session()->regenerate();
             return $user;
         });
-
-        return $user;
     }
 }

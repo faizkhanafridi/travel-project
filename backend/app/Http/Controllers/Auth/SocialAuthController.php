@@ -1,42 +1,37 @@
 <?php
+// app/Http/Controllers/Auth/SocialAuthController.php
 
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\Auth\SocialAuthService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class SocialAuthController extends Controller
 {
-    public function __construct(
-        private SocialAuthService $socialAuthService,
-    ) {}
+    public function __construct(private SocialAuthService $service) {}
 
-    public function redirect(string $provider): RedirectResponse
+    public function redirect(string $provider): JsonResponse
     {
-        $this->ensureSupported($provider);
-
-        return $this->socialAuthService->redirect($provider);
+        $this->assertProvider($provider);
+        return response()->json(['url' => $this->service->redirectUrl($provider)]);
     }
 
-    public function callback(string $provider, Request $request): RedirectResponse
+    public function callback(string $provider): RedirectResponse
     {
-        $this->ensureSupported($provider);
-
-        $user = $this->socialAuthService->callback($provider);
-
-        Auth::guard('web')->login($user);
-        $request->session()->regenerate();
-
-        // Redirect to SPA; onboarding is decided on the frontend via /auth/me.
-        return redirect()->away(
-            rtrim(config('app.frontend_url', env('FRONTEND_URL')), '/').'/auth/social/callback'
-        );
+        $this->assertProvider($provider);
+        try {
+            $this->service->handleCallback($provider);
+            return redirect()->away(rtrim(config('app.frontend_url'), '/') . '/auth/social/success');
+        } catch (\Throwable $e) {
+            Log::warning('social login failed', ['provider' => $provider, 'error' => $e->getMessage()]);
+            return redirect()->away(rtrim(config('app.frontend_url'), '/') . '/auth/social/error');
+        }
     }
 
-    private function ensureSupported(string $provider): void
+    private function assertProvider(string $provider): void
     {
         abort_unless(in_array($provider, ['google', 'facebook'], true), 404);
     }

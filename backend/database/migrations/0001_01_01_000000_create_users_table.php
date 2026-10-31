@@ -11,26 +11,28 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
+      Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
+            $table->string('name');
+            $table->string('username')->unique()->nullable();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password')->nullable(); // nullable: social-only users
-            $table->string('account_type', 20)->default('customer');
-            $table->boolean('onboarding_completed')->default(false);
+            $table->string('password')->nullable(); // nullable for social-only accounts
+            $table->string('google_id')->nullable()->index();
+            $table->string('facebook_id')->nullable()->index();
+            $table->string('status')->default('active'); // active | suspended | banned
+            $table->timestamp('onboarding_completed_at')->nullable();
+            $table->string('onboarding_choice')->nullable(); // customer | agent
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
+            $table->timestamp('two_factor_confirmed_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
             $table->softDeletes();
-        });
-        Schema::create('password_reset_tokens', function (Blueprint $table) {
-            $table->string('email')->primary();            
-            $table->string('purpose', 20)->default('reset');
 
-            $table->string('token'); // hashed
-            $table->timestamp('created_at')->nullable();
+            $table->index('status');
         });
-
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->foreignId('user_id')->nullable()->index();
@@ -47,7 +49,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
     }
 };

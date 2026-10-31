@@ -1,168 +1,125 @@
 <?php
+// app/Services/Auth/PasswordResetService.php
 
 namespace App\Services\Auth;
 
-use App\Jobs\Auth\SendPasswordResetJob;
+use App\Mail\Auth\PasswordResetCodeMail;
+use App\Mail\Auth\SetPasswordCodeMail;
+use App\Models\Auth\User;
+use App\Repositories\Contracts\Auth\PasswordResetCodeRepositoryInterface;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Mail;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class PasswordResetService
 {
     public function __construct(
+        private PasswordResetCodeRepositoryInterface $codeRepo,
         private UserRepositoryInterface $userRepo,
     ) {}
 
-    // public function sendResetLink(string $email): void
-    // {
-    //     $user = $this->userRepo->findByEmail($email);
-
-    //     // Always generic; never reveal whether the email exists.
-    //     if (! $user || ! $user->hasPassword()) {
-    //         return;
-    //     }
-
-    //     $plainToken = Str::random(64);
-    //     $hashedToken = Hash::make($plainToken);
-    //     $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
-
-    //     DB::table('password_reset_tokens')->updateOrInsert(
-    //         ['email' => $email],
-    //         [
-    //             'token' => $hashedToken,
-    //             'created_at' => now(),
-    //         ],
-    //     );
-
-    //     // The plain token is emailed to the user; only the hash is stored.
-    //     sendPasswordResetJob::dispatch($email, $plainToken, $ttl);
-
-    // }
-
-    public function reset(string $email, string $plainToken, string $newPassword): void
+    public function sendCode(string $email): void
     {
         $user = $this->userRepo->findByEmail($email);
-
-        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
-
-        // if (! $user || ! $record || ! Hash::check($plainToken, $record->token)) {
-        //     throw ValidationException::withMessages([
-        //         'token' => ['This password reset token is invalid.'],
-        //     ]);
-        // }
-     if (! $user || ! $record || ($record->purpose ?? 'reset') !== 'reset' || ! Hash::check($plainToken, $record->token)) {
-    throw ValidationException::withMessages([
-        'token' => ['This password reset token is invalid.'],
-    ]);
-}
-
-        $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
-
-        if (now()->diffInMinutes($record->created_at) > $ttl) {
-            DB::table('password_reset_tokens')->where('email', $email)->delete();
-            throw ValidationException::withMessages([
-                'token' => ['This password reset token has expired.'],
-            ]);
+        if (! $user) {
+            // generic response to avoid enumeration
+            return;
         }
 
-        DB::transaction(function () use ($user, $email, $newPassword) {
+        $existing = $this->codeRepo->findByEmail($email);
+        if ($existing && $existing->last_sent_at && $existing->last_sent_at->diffInSeconds(now()) < 60) {
+            throw new UnprocessableEntityHttpException('Please wait before requesting a new code.');
+        }
+
+        $plain = $this->generateCode();
+        $this->codeRepo->upsert($email, [
+            'code_hash' => Hash::make($plain),
+            'expires_at' => now()->addMinutes((int) config('auth.code_ttl', 10)),
+            'last_sent_at' => now(),
+            'attempts' => 0,
+        ]);
+
+        // Social-only users have no password yet — send a "set password" email
+        // instead of a "reset password" email. Both flows reuse the same code table.
+        if ($user->password === null) {
+            Mail::to($email)->queue(new SetPasswordCodeMail($user->name, $email, $plain));
+            return;
+        }
+
+        Mail::to($email)->queue(new PasswordResetCodeMail($user->name, $email, $plain));
+    }
+
+    public function reset(string $email, string $plainCode, string $newPassword): void
+    {
+        $user = $this->consumeCode($email, $plainCode);
+
+        if ($user->password === null) {
+            // Defensive: reset endpoint must not be used for social-only users.
+            // They should use set-password. Still allow it here as a safety net.
             $this->userRepo->updatePassword($user, Hash::make($newPassword));
-            DB::table('password_reset_tokens')->where('email', $email)->delete();
-            // Invalidate sessions/tokens on password change.
-            $user->tokens()->delete();
-        });
+            $this->userRepo->invalidateSessions($user);
+            return;
+        }
+
+        $this->userRepo->updatePassword($user, Hash::make($newPassword));
+        $this->userRepo->invalidateSessions($user);
     }
 
-    // Public endpoint — forgot-password form. Decides reset vs. set by user state.
-public function sendResetOrSetLink(string $email): void
-{
-    $user = $this->userRepo->findByEmail($email);
+    public function setPassword(string $email, string $plainCode, string $newPassword): void
+    {
+        $user = $this->consumeCode($email, $plainCode);
 
-    // Generic behavior — never leak whether the email is registered.
-    if (! $user) {
-        return;
+        if ($user->password !== null) {
+            // Defensive: once a password exists, only reset/change-password may be used.
+            throw new UnprocessableEntityHttpException('A password is already set for this account.');
+        }
+
+        $this->userRepo->updatePassword($user, Hash::make($newPassword));
+        $this->userRepo->invalidateSessions($user);
     }
 
-    if ($user->hasPassword()) {
-        $this->dispatchResetLink($email);
-    } else {
-        $this->dispatchSetLink($email);
-    }
-}
-
-// Reuse for existing users with a password.
-private function dispatchResetLink(string $email): void
-{
-    $plainToken = \Illuminate\Support\Str::random(64);
-    $hashedToken = \Illuminate\Support\Facades\Hash::make($plainToken);
-    $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
-
-    \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
-        ['email' => $email],
-        ['token' => $hashedToken, 'purpose' => 'reset', 'created_at' => now()],
-    );
-
-    \App\Jobs\Auth\SendPasswordResetJob::dispatch($email, $plainToken, $ttl);
-}
-
-// Social-only users — send a "set password" link.
-private function dispatchSetLink(string $email): void
-{
-    $plainToken = \Illuminate\Support\Str::random(64);
-    $hashedToken = \Illuminate\Support\Facades\Hash::make($plainToken);
-    $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
-
-    \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
-        ['email' => $email],
-        ['token' => $hashedToken, 'purpose' => 'set', 'created_at' => now()],
-    );
-
-    \App\Jobs\Auth\SendSetPasswordJob::dispatch($email, $plainToken, $ttl);
-}
-
-// New public method: social-only user submits a set-password token from email.
-public function setPasswordWithToken(string $email, string $plainToken, string $newPassword): void
-{
-    $user = $this->userRepo->findByEmail($email);
-
-    $record = \Illuminate\Support\Facades\DB::table('password_reset_tokens')
-        ->where('email', $email)
-        ->first();
-
-    if (! $user || ! $record || ! \Illuminate\Support\Facades\Hash::check($plainToken, $record->token)) {
-        throw \Illuminate\Validation\ValidationException::withMessages([
-            'token' => ['This password-set token is invalid.'],
-        ]);
+    public function changePassword(User $user, string $currentPassword, string $newPassword): void
+    {
+        if (! $user->password || ! Hash::check($currentPassword, $user->password)) {
+            throw new UnprocessableEntityHttpException('Current password is incorrect.');
+        }
+        $this->userRepo->updatePassword($user, Hash::make($newPassword));
+        // invalidate other sessions
+        $this->userRepo->invalidateSessions($user, request()->session()->getId());
     }
 
-    if ($record->purpose !== 'set') {
-        throw \Illuminate\Validation\ValidationException::withMessages([
-            'token' => ['This token is not valid for setting a password.'],
-        ]);
+    /**
+     * Verifies and consumes a password reset / set-password code, returning the user.
+     * Shared by reset() and setPassword().
+     */
+    private function consumeCode(string $email, string $plainCode): User
+    {
+        $record = $this->codeRepo->findByEmail($email);
+        if (! $record || $record->isExpired()) {
+            throw new UnprocessableEntityHttpException('Invalid or expired code.');
+        }
+        if ($record->attempts >= 5) {
+            $this->codeRepo->delete($record);
+            throw new UnprocessableEntityHttpException('Too many attempts. Please request a new code.');
+        }
+        if (! Hash::check($plainCode, $record->code_hash)) {
+            $this->codeRepo->incrementAttempts($record);
+            throw new UnprocessableEntityHttpException('Invalid or expired code.');
+        }
+
+        $user = $this->userRepo->findByEmail($email);
+        if (! $user) {
+            throw new UnprocessableEntityHttpException('Unable to complete the request.');
+        }
+
+        $this->codeRepo->delete($record);
+
+        return $user;
     }
 
-    // If they somehow already have a password (race), refuse.
-    if ($user->hasPassword()) {
-        throw \Illuminate\Validation\ValidationException::withMessages([
-            'email' => ['This account already has a password. Use forgot-password instead.'],
-        ]);
+    private function generateCode(): string
+    {
+        return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     }
-
-    $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
-
-    if (now()->diffInMinutes($record->created_at) > $ttl) {
-        \Illuminate\Support\Facades\DB::table('password_reset_tokens')->where('email', $email)->delete();
-        throw \Illuminate\Validation\ValidationException::withMessages([
-            'token' => ['This password-set token has expired.'],
-        ]);
-    }
-
-    \Illuminate\Support\Facades\DB::transaction(function () use ($user, $email, $newPassword) {
-        $this->userRepo->updatePassword($user, \Illuminate\Support\Facades\Hash::make($newPassword));
-        \Illuminate\Support\Facades\DB::table('password_reset_tokens')->where('email', $email)->delete();
-        $user->tokens()->delete();
-    });
-}
 }

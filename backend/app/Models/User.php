@@ -2,67 +2,48 @@
 
 namespace App\Models;
 
-use App\Enums\Auth\AccountType;
-use App\Models\Agent\Agent;
-use App\Models\Auth\SocialAccount;
-use App\Models\UserProfile\UserProfile;
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Str;
-use Laravel\Sanctum\HasApiTokens;
-use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
+    /** @use HasFactory<UserFactory> */
+    use HasFactory, Notifiable;
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
-        'uuid',
+        'name',
         'email',
         'password',
-        'account_type',
-        'onboarding_completed',
-        'email_verified_at',
     ];
 
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var list<string>
+     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'onboarding_completed' => 'boolean',
-        'account_type' => AccountType::class,
-    ];
-
-    protected static function booted(): void
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
     {
-        static::creating(function (self $user) {
-            $user->uuid ??= (string) Str::uuid();
-        });
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
     }
-
-    // A user "has a password" only if it was set locally.
-    public function hasPassword(): bool
-    {
-        return ! is_null($this->password);
-    }
-
-    public function socialAccounts()
-    {
-        return $this->hasMany(SocialAccount::class);
-    }
-
-    public function profile()
-    {
-        return $this->hasOne(UserProfile::class);
-    }
-
-    public function agent()
-{
-    return $this->hasOne(Agent::class);
-}
 }

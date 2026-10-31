@@ -1,53 +1,33 @@
 <?php
+// app/Models/Auth/PendingRegistration.php
 
 namespace App\Models\Auth;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 
 class PendingRegistration extends Model
 {
     protected $fillable = [
-        'uuid',
         'email',
+        'name',
         'password',
-        'verification_code',
+        'code_hash',
         'attempts',
         'expires_at',
         'last_sent_at',
-        'ip_address',
+        'registered_from_ip',
     ];
 
-    protected $hidden = [
-        'password',
-        'verification_code',
-    ];
-
-    protected $casts = [
-        'expires_at' => 'datetime',
-        'last_sent_at' => 'datetime',
-        'attempts' => 'integer',
-    ];
-
-    protected static function booted(): void
+    protected function casts(): array
     {
-        static::creating(function (self $model) {
-            $model->uuid ??= (string) Str::uuid();
-        });
+        return [
+            'expires_at' => 'datetime',
+            'last_sent_at' => 'datetime',
+        ];
     }
 
     public function isExpired(): bool
     {
         return $this->expires_at->isPast();
-    }
-
-    public function hasExceededAttempts(int $max): bool
-    {
-        return $this->attempts >= $max;
-    }
-
-    public function canResend(int $cooldownSeconds): bool
-    {
-        return $this->last_sent_at->addSeconds($cooldownSeconds)->isPast();
     }
 }

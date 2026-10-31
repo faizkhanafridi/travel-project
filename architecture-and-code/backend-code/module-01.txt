@@ -1,25 +1,10 @@
-<?php
 
-namespace App\Enums\Auth;
-
-enum AccountType: string
-{
-    case CUSTOMER = 'customer';
-    case AGENT = 'agent';
-    case SUPER_ADMIN = 'super_admin';
-}
-
-<?php
-
-namespace App\Enums\Auth;
-
-enum RoleName: string
-{
-    case CUSTOMER = 'customer';
-    case AGENT = 'agent';
-    case SUPER_ADMIN = 'super_admin';
-}
-
+APP_NAME="Travel Marketplace"
+APP_ENV=local
+APP_KEY=base64:89F8NZuE0mH/OtFeaFdnQzoRgzN/zL7vJES7dnrnYEM=
+APP_DEBUG=true
+APP_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:5173
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -33,24 +18,28 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
+      Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
+            $table->string('name');
+            $table->string('username')->unique()->nullable();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password')->nullable(); // nullable: social-only users
-            $table->string('account_type', 20)->default('customer');
-            $table->boolean('onboarding_completed')->default(false);
+            $table->string('password')->nullable(); // nullable for social-only accounts
+            $table->string('google_id')->nullable()->index();
+            $table->string('facebook_id')->nullable()->index();
+            $table->string('status')->default('active'); // active | suspended | banned
+            $table->timestamp('onboarding_completed_at')->nullable();
+            $table->string('onboarding_choice')->nullable(); // customer | agent
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
+            $table->timestamp('two_factor_confirmed_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
             $table->softDeletes();
-        });
-        Schema::create('password_reset_tokens', function (Blueprint $table) {
-            $table->string('email')->primary();
-            $table->string('token'); // hashed
-            $table->timestamp('created_at')->nullable();
-        });
 
+            $table->index('status');
+        });
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->foreignId('user_id')->nullable()->index();
@@ -67,12 +56,11 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
     }
 };
-
 <?php
+// database/migrations/2024_01_01_000100_create_auth_support_tables.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -84,24 +72,64 @@ return new class extends Migration
     {
         Schema::create('pending_registrations', function (Blueprint $table) {
             $table->id();
-            $table->uuid('uuid')->unique();
-            $table->string('email')->index();
-            $table->string('password'); // hashed
-            $table->string('verification_code'); // hashed
+            $table->string('email')->unique();
+            $table->string('name');
+            $table->string('password'); // pre-hashed
+            $table->string('code_hash');
             $table->unsignedTinyInteger('attempts')->default(0);
             $table->timestamp('expires_at');
-            $table->timestamp('last_sent_at');
-            $table->ipAddress('ip_address')->nullable();
+            $table->timestamp('last_sent_at')->nullable();
+            $table->string('registered_from_ip', 45)->nullable();
             $table->timestamps();
+        });
 
-            // Prevent duplicate pending registrations for the same email
-            $table->unique('email');
+        Schema::create('password_reset_codes', function (Blueprint $table) {
+            $table->id();
+            $table->string('email')->index();
+            $table->string('code_hash');
+            $table->unsignedTinyInteger('attempts')->default(0);
+            $table->timestamp('expires_at');
+            $table->timestamp('last_sent_at')->nullable();
+            $table->timestamps();
         });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('password_reset_codes');
         Schema::dropIfExists('pending_registrations');
+    }
+};<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('tokenable');
+            $table->text('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable()->index();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('personal_access_tokens');
     }
 };
 <?php
@@ -112,155 +140,320 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
-        Schema::create('social_accounts', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->string('provider', 50); // google | facebook
-            $table->string('provider_user_id');
+        $teams = config('permission.teams');
+        $tableNames = config('permission.table_names');
+        $columnNames = config('permission.column_names');
+        $pivotRole = $columnNames['role_pivot_key'] ?? 'role_id';
+        $pivotPermission = $columnNames['permission_pivot_key'] ?? 'permission_id';
+
+        throw_if(empty($tableNames), Exception::class, 'Error: config/permission.php not loaded. Run [php artisan config:clear] and try again.');
+        throw_if($teams && empty($columnNames['team_foreign_key'] ?? null), Exception::class, 'Error: team_foreign_key on config/permission.php not loaded. Run [php artisan config:clear] and try again.');
+
+        Schema::create($tableNames['permissions'], static function (Blueprint $table) {
+            // $table->engine('InnoDB');
+            $table->bigIncrements('id'); // permission id
+            $table->string('name');       // For MyISAM use string('name', 225); // (or 166 for InnoDB with Redundant/Compact row format)
+            $table->string('guard_name'); // For MyISAM use string('guard_name', 25);
             $table->timestamps();
 
-            $table->unique(['provider', 'provider_user_id']);
-            $table->unique(['user_id', 'provider']);
+            $table->unique(['name', 'guard_name']);
         });
+
+        Schema::create($tableNames['roles'], static function (Blueprint $table) use ($teams, $columnNames) {
+            // $table->engine('InnoDB');
+            $table->bigIncrements('id'); // role id
+            if ($teams || config('permission.testing')) { // permission.testing is a fix for sqlite testing
+                $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
+                $table->index($columnNames['team_foreign_key'], 'roles_team_foreign_key_index');
+            }
+            $table->string('name');       // For MyISAM use string('name', 225); // (or 166 for InnoDB with Redundant/Compact row format)
+            $table->string('guard_name'); // For MyISAM use string('guard_name', 25);
+            $table->timestamps();
+            if ($teams || config('permission.testing')) {
+                $table->unique([$columnNames['team_foreign_key'], 'name', 'guard_name']);
+            } else {
+                $table->unique(['name', 'guard_name']);
+            }
+        });
+
+        Schema::create($tableNames['model_has_permissions'], static function (Blueprint $table) use ($tableNames, $columnNames, $pivotPermission, $teams) {
+            $table->unsignedBigInteger($pivotPermission);
+
+            $table->string('model_type');
+            $table->unsignedBigInteger($columnNames['model_morph_key']);
+            $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_permissions_model_id_model_type_index');
+
+            $table->foreign($pivotPermission)
+                ->references('id') // permission id
+                ->on($tableNames['permissions'])
+                ->onDelete('cascade');
+            if ($teams) {
+                $table->unsignedBigInteger($columnNames['team_foreign_key']);
+                $table->index($columnNames['team_foreign_key'], 'model_has_permissions_team_foreign_key_index');
+
+                $table->primary([$columnNames['team_foreign_key'], $pivotPermission, $columnNames['model_morph_key'], 'model_type'],
+                    'model_has_permissions_permission_model_type_primary');
+            } else {
+                $table->primary([$pivotPermission, $columnNames['model_morph_key'], 'model_type'],
+                    'model_has_permissions_permission_model_type_primary');
+            }
+
+        });
+
+        Schema::create($tableNames['model_has_roles'], static function (Blueprint $table) use ($tableNames, $columnNames, $pivotRole, $teams) {
+            $table->unsignedBigInteger($pivotRole);
+
+            $table->string('model_type');
+            $table->unsignedBigInteger($columnNames['model_morph_key']);
+            $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_roles_model_id_model_type_index');
+
+            $table->foreign($pivotRole)
+                ->references('id') // role id
+                ->on($tableNames['roles'])
+                ->onDelete('cascade');
+            if ($teams) {
+                $table->unsignedBigInteger($columnNames['team_foreign_key']);
+                $table->index($columnNames['team_foreign_key'], 'model_has_roles_team_foreign_key_index');
+
+                $table->primary([$columnNames['team_foreign_key'], $pivotRole, $columnNames['model_morph_key'], 'model_type'],
+                    'model_has_roles_role_model_type_primary');
+            } else {
+                $table->primary([$pivotRole, $columnNames['model_morph_key'], 'model_type'],
+                    'model_has_roles_role_model_type_primary');
+            }
+        });
+
+        Schema::create($tableNames['role_has_permissions'], static function (Blueprint $table) use ($tableNames, $pivotRole, $pivotPermission) {
+            $table->unsignedBigInteger($pivotPermission);
+            $table->unsignedBigInteger($pivotRole);
+
+            $table->foreign($pivotPermission)
+                ->references('id') // permission id
+                ->on($tableNames['permissions'])
+                ->onDelete('cascade');
+
+            $table->foreign($pivotRole)
+                ->references('id') // role id
+                ->on($tableNames['roles'])
+                ->onDelete('cascade');
+
+            $table->primary([$pivotPermission, $pivotRole], 'role_has_permissions_permission_id_role_id_primary');
+        });
+
+        app('cache')
+            ->store(config('permission.cache.store') != 'default' ? config('permission.cache.store') : null)
+            ->forget(config('permission.cache.key'));
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
-        Schema::dropIfExists('social_accounts');
+        $tableNames = config('permission.table_names');
+
+        throw_if(empty($tableNames), Exception::class, 'Error: config/permission.php not found and defaults could not be merged. Please publish the package configuration before proceeding, or drop the tables manually.');
+
+        Schema::drop($tableNames['role_has_permissions']);
+        Schema::drop($tableNames['model_has_roles']);
+        Schema::drop($tableNames['model_has_permissions']);
+        Schema::drop($tableNames['roles']);
+        Schema::drop($tableNames['permissions']);
     }
 };
-
-
 <?php
+// app/Enums/Auth/UserRole.php
+
+namespace App\Enums\Auth;
+
+enum UserRole: string
+{
+    case CUSTOMER = 'customer';
+    case AGENT = 'agent';
+    case SUPER_ADMIN = 'super_admin';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::CUSTOMER => 'Customer',
+            self::AGENT => 'Agent',
+            self::SUPER_ADMIN => 'Platform Admin',
+        };
+    }
+}<?php
+// app/Enums/Auth/UserStatus.php
+
+namespace App\Enums\Auth;
+
+enum UserStatus: string
+{
+    case ACTIVE = 'active';
+    case SUSPENDED = 'suspended';
+    case BANNED = 'banned';
+}<?php
+// app/Enums/Auth/OnboardingChoice.php
+
+namespace App\Enums\Auth;
+
+enum OnboardingChoice: string
+{
+    case CUSTOMER = 'customer';
+    case AGENT = 'agent';
+}<?php
+// app/Models/Auth/User.php
 
 namespace App\Models\Auth;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
+use App\Enums\Auth\OnboardingChoice;
+use App\Enums\Auth\UserStatus;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
-class PendingRegistration extends Model
+class User extends Authenticatable
 {
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes;
+
     protected $fillable = [
         'uuid',
+        'name',
+        'username',
         'email',
         'password',
-        'verification_code',
-        'attempts',
-        'expires_at',
-        'last_sent_at',
-        'ip_address',
+        'google_id',
+        'facebook_id',
+        'status',
+        'onboarding_completed_at',
+        'onboarding_choice',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
     ];
 
     protected $hidden = [
         'password',
-        'verification_code',
+        'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
-    protected $casts = [
-        'expires_at' => 'datetime',
-        'last_sent_at' => 'datetime',
-        'attempts' => 'integer',
-    ];
-
-    protected static function booted(): void
+    protected function casts(): array
     {
-        static::creating(function (self $model) {
-            $model->uuid ??= (string) Str::uuid();
-        });
+        return [
+            'email_verified_at' => 'datetime',
+            'onboarding_completed_at' => 'datetime',
+            'two_factor_confirmed_at' => 'datetime',
+            'password' => 'hashed',
+            'status' => UserStatus::class,
+            'onboarding_choice' => OnboardingChoice::class,
+            'two_factor_secret' => 'encrypted',
+        ];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    public function hasCompletedOnboarding(): bool
+    {
+        return $this->onboarding_completed_at !== null;
+    }
+
+    public function hasMfaEnabled(): bool
+    {
+        return $this->two_factor_confirmed_at !== null;
+    }
+}<?php
+// app/Models/Auth/PendingRegistration.php
+
+namespace App\Models\Auth;
+
+use Illuminate\Database\Eloquent\Model;
+
+class PendingRegistration extends Model
+{
+    protected $fillable = [
+        'email',
+        'name',
+        'password',
+        'code_hash',
+        'attempts',
+        'expires_at',
+        'last_sent_at',
+        'registered_from_ip',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'expires_at' => 'datetime',
+            'last_sent_at' => 'datetime',
+        ];
     }
 
     public function isExpired(): bool
     {
         return $this->expires_at->isPast();
     }
-
-    public function hasExceededAttempts(int $max): bool
-    {
-        return $this->attempts >= $max;
-    }
-
-    public function canResend(int $cooldownSeconds): bool
-    {
-        return $this->last_sent_at->addSeconds($cooldownSeconds)->isPast();
-    }
 }<?php
+// app/Models/Auth/PasswordResetCode.php
 
 namespace App\Models\Auth;
 
-use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class SocialAccount extends Model
+class PasswordResetCode extends Model
 {
     protected $fillable = [
-        'user_id',
-        'provider',
-        'provider_user_id',
-    ];
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-}<?php
-
-namespace App\Models;
-
-use App\Enums\Auth\AccountType;
-use App\Models\Auth\SocialAccount;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Str;
-use Laravel\Sanctum\HasApiTokens;
-use Spatie\Permission\Traits\HasRoles;
-
-class User extends Authenticatable
-{
-    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
-
-    protected $fillable = [
-        'uuid',
         'email',
-        'password',
-        'account_type',
-        'onboarding_completed',
-        'email_verified_at',
+        'code_hash',
+        'attempts',
+        'expires_at',
+        'last_sent_at',
     ];
 
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
-
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'onboarding_completed' => 'boolean',
-        'account_type' => AccountType::class,
-    ];
-
-    protected static function booted(): void
+    protected function casts(): array
     {
-        static::creating(function (self $user) {
-            $user->uuid ??= (string) Str::uuid();
-        });
+        return [
+            'expires_at' => 'datetime',
+            'last_sent_at' => 'datetime',
+        ];
     }
 
-    // A user "has a password" only if it was set locally.
-    public function hasPassword(): bool
+    public function isExpired(): bool
     {
-        return ! is_null($this->password);
-    }
-
-    public function socialAccounts()
-    {
-        return $this->hasMany(SocialAccount::class);
+        return $this->expires_at->isPast();
     }
 }<?php
+// app/Repositories/Contracts/Auth/UserRepositoryInterface.php
+
+namespace App\Repositories\Contracts\Auth;
+
+use App\Models\Auth\User;
+
+interface UserRepositoryInterface
+{
+    public function findByEmail(string $email): ?User;
+
+    public function create(array $data): User;
+
+    public function assignRole(User $user, string $role): void;
+
+    public function updatePassword(User $user, string $hashedPassword): void;
+
+    public function invalidateSessions(User $user, ?string $exceptSessionId = null): void;
+}<?php
+// app/Repositories/Contracts/Auth/PendingRegistrationRepositoryInterface.php
 
 namespace App\Repositories\Contracts\Auth;
 
@@ -270,14 +463,72 @@ interface PendingRegistrationRepositoryInterface
 {
     public function findByEmail(string $email): ?PendingRegistration;
 
-    public function create(array $data): PendingRegistration;
-
-    public function update(PendingRegistration $pending, array $data): PendingRegistration;
-
-    public function delete(PendingRegistration $pending): void;
+    public function upsert(string $email, array $data): PendingRegistration;
 
     public function incrementAttempts(PendingRegistration $pending): void;
+
+    public function delete(PendingRegistration $pending): void;
 }<?php
+// app/Repositories/Contracts/Auth/PasswordResetCodeRepositoryInterface.php
+
+namespace App\Repositories\Contracts\Auth;
+
+use App\Models\Auth\PasswordResetCode;
+
+interface PasswordResetCodeRepositoryInterface
+{
+    public function findByEmail(string $email): ?PasswordResetCode;
+
+    public function upsert(string $email, array $data): PasswordResetCode;
+
+    public function incrementAttempts(PasswordResetCode $code): void;
+
+    public function delete(PasswordResetCode $code): void;
+}<?php
+// app/Repositories/Eloquent/Auth/UserRepository.php
+
+namespace App\Repositories\Eloquent\Auth;
+
+use App\Models\Auth\User;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class UserRepository implements UserRepositoryInterface
+{
+    public function findByEmail(string $email): ?User
+    {
+        return User::where('email', $email)->first();
+    }
+
+    public function create(array $data): User
+    {
+        $data['uuid'] = $data['uuid'] ?? (string) Str::uuid();
+
+        return User::create($data);
+    }
+
+    public function assignRole(User $user, string $role): void
+    {
+        $user->syncRoles([$role]);
+    }
+
+    public function updatePassword(User $user, string $hashedPassword): void
+    {
+        // use forceFill to bypass the hashed cast (already hashed)
+        $user->forceFill(['password' => $hashedPassword])->save();
+    }
+
+    public function invalidateSessions(User $user, ?string $exceptSessionId = null): void
+    {
+        $query = DB::table('sessions')->where('user_id', $user->id);
+        if ($exceptSessionId) {
+            $query->where('id', '!=', $exceptSessionId);
+        }
+        $query->delete();
+    }
+}<?php
+// app/Repositories/Eloquent/Auth/PendingRegistrationRepository.php
 
 namespace App\Repositories\Eloquent\Auth;
 
@@ -291,701 +542,547 @@ class PendingRegistrationRepository implements PendingRegistrationRepositoryInte
         return PendingRegistration::where('email', $email)->first();
     }
 
-    public function create(array $data): PendingRegistration
+    public function upsert(string $email, array $data): PendingRegistration
     {
-        return PendingRegistration::create($data);
-    }
-
-    public function update(PendingRegistration $pending, array $data): PendingRegistration
-    {
-        $pending->update($data);
-
-        return $pending->refresh();
-    }
-
-    public function delete(PendingRegistration $pending): void
-    {
-        $pending->delete();
+        return PendingRegistration::updateOrCreate(
+            ['email' => $email],
+            $data + ['email' => $email]
+        );
     }
 
     public function incrementAttempts(PendingRegistration $pending): void
     {
         $pending->increment('attempts');
     }
+
+    public function delete(PendingRegistration $pending): void
+    {
+        $pending->delete();
+    }
 }<?php
-
-namespace App\Repositories\Contracts\Auth;
-
-use App\Models\User;
-
-interface UserRepositoryInterface
-{
-    public function findByEmail(string $email): ?User;
-
-    public function findByUuid(string $uuid): ?User;
-
-    public function create(array $data): User;
-
-    public function markEmailVerified(User $user): User;
-
-    public function updatePassword(User $user, string $hashedPassword): User;
-
-    public function updateOnboarding(User $user, array $data): User;
-}<?php
+// app/Repositories/Eloquent/Auth/PasswordResetCodeRepository.php
 
 namespace App\Repositories\Eloquent\Auth;
 
-use App\Models\User;
-use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use App\Models\Auth\PasswordResetCode;
+use App\Repositories\Contracts\Auth\PasswordResetCodeRepositoryInterface;
 
-class UserRepository implements UserRepositoryInterface
+class PasswordResetCodeRepository implements PasswordResetCodeRepositoryInterface
 {
-    public function findByEmail(string $email): ?User
+    public function findByEmail(string $email): ?PasswordResetCode
     {
-        return User::where('email', $email)->first();
+        return PasswordResetCode::where('email', $email)->first();
     }
 
-    public function findByUuid(string $uuid): ?User
+    public function upsert(string $email, array $data): PasswordResetCode
     {
-        return User::where('uuid', $uuid)->first();
+        return PasswordResetCode::updateOrCreate(
+            ['email' => $email],
+            $data + ['email' => $email]
+        );
     }
 
-    public function create(array $data): User
+    public function incrementAttempts(PasswordResetCode $code): void
     {
-        return User::create($data);
+        $code->increment('attempts');
     }
 
-    public function markEmailVerified(User $user): User
+    public function delete(PasswordResetCode $code): void
     {
-        $user->forceFill(['email_verified_at' => now()])->save();
-
-        return $user->refresh();
-    }
-
-    public function updatePassword(User $user, string $hashedPassword): User
-    {
-        $user->forceFill(['password' => $hashedPassword])->save();
-
-        return $user->refresh();
-    }
-
-    public function updateOnboarding(User $user, array $data): User
-    {
-        $user->update($data);
-
-        return $user->refresh();
+        $code->delete();
     }
 }<?php
-
-namespace App\Repositories\Contracts\Auth;
-
-use App\Models\Auth\SocialAccount;
-
-interface SocialAccountRepositoryInterface
-{
-    public function findByProvider(string $provider, string $providerUserId): ?SocialAccount;
-
-    public function create(array $data): SocialAccount;
-}<?php
-
-namespace App\Repositories\Eloquent\Auth;
-
-use App\Models\Auth\SocialAccount;
-use App\Repositories\Contracts\Auth\SocialAccountRepositoryInterface;
-
-class SocialAccountRepository implements SocialAccountRepositoryInterface
-{
-    public function findByProvider(string $provider, string $providerUserId): ?SocialAccount
-    {
-        return SocialAccount::where('provider', $provider)
-            ->where('provider_user_id', $providerUserId)
-            ->first();
-    }
-
-    public function create(array $data): SocialAccount
-    {
-        return SocialAccount::create($data);
-    }
-}<?php
+// app/Services/Auth/RegistrationService.php
 
 namespace App\Services\Auth;
 
-use Illuminate\Support\Facades\Hash;
-
-class VerificationCodeService
-{
-    public function generate(): string
-    {
-        return (string) random_int(100000, 999999);
-    }
-
-    public function hash(string $code): string
-    {
-        return Hash::make($code);
-    }
-
-    public function verify(string $code, string $hashedCode): bool
-    {
-        return Hash::check($code, $hashedCode);
-    }
-}<?php
-
-namespace App\Services\Auth;
-
-use App\Enums\Auth\AccountType;
-use App\Enums\Auth\RoleName;
-use App\Jobs\Auth\SendVerificationCodeJob;
-use App\Models\Auth\PendingRegistration;
-use App\Models\User;
+use App\Enums\Auth\UserRole;
+use App\Mail\Auth\VerificationCodeMail;
+use App\Models\Auth\User;
 use App\Repositories\Contracts\Auth\PendingRegistrationRepositoryInterface;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class RegistrationService
 {
     public function __construct(
         private PendingRegistrationRepositoryInterface $pendingRepo,
         private UserRepositoryInterface $userRepo,
-        private VerificationCodeService $codeService,
     ) {}
 
-    /**
-     * Step 1 — Register: write to pending_registrations. No users row created.
-     */
-    public function register(string $email, string $plainPassword, ?string $ip): PendingRegistration
+    public function register(string $name, string $email, string $plainPassword, ?string $ip): void
     {
-        // If a verified user already exists, reject (generic message in controller).
         if ($this->userRepo->findByEmail($email)) {
-            throw ValidationException::withMessages([
-                'email' => ['An account with this email already exists.'],
-            ]);
+            throw new UnprocessableEntityHttpException('This email cannot be registered.');
         }
 
-        $code = $this->codeService->generate();
-        $ttl = (int) config('auth.verification_code_ttl_minutes', 15) ?: 15;
-
-        $existing = $this->pendingRepo->findByEmail($email);
-
-        $payload = [
-            'email' => $email,
-            'password' => Hash::make($plainPassword),
-            'verification_code' => $this->codeService->hash($code),
-            'attempts' => 0,
-            'expires_at' => now()->addMinutes($ttl),
-            'last_sent_at' => now(),
-            'ip_address' => $ip,
-        ];
-
-        $pending = $existing
-            ? $this->pendingRepo->update($existing, $payload)
-            : $this->pendingRepo->create($payload);
-
-        // Queue the email (Redis queue). Never log the code.
-        SendVerificationCodeJob::dispatch($pending->email, $code);
-
-        return $pending;
+        $this->issueCode($name, $email, $plainPassword, $ip);
     }
 
-    /**
-     * Step 2 — Verify email: atomically create the users row + assign role.
-     */
-    public function verifyEmail(string $email, string $code): User
+    public function resend(string $email): void
     {
         $pending = $this->pendingRepo->findByEmail($email);
-
         if (! $pending) {
-            throw ValidationException::withMessages([
-                'email' => ['No pending registration found for this email.'],
-            ]);
-        }
-
-        if ($pending->isExpired()) {
-            $this->pendingRepo->delete($pending);
-            throw ValidationException::withMessages([
-                'code' => ['This verification code has expired. Please register again.'],
-            ]);
-        }
-
-        $maxAttempts = (int) config('auth.verification_max_attempts', 5) ?: 5;
-
-        if ($pending->hasExceededAttempts($maxAttempts)) {
-            throw ValidationException::withMessages([
-                'code' => ['Too many incorrect attempts. Please register again.'],
-            ]);
-        }
-
-        if (! $this->codeService->verify($code, $pending->verification_code)) {
-            $this->pendingRepo->incrementAttempts($pending);
-            throw ValidationException::withMessages([
-                'code' => ['The verification code is incorrect.'],
-            ]);
-        }
-
-        // Atomic: create user + assign role + delete pending row.
-        $user = DB::transaction(function () use ($pending) {
-            $user = $this->userRepo->create([
-                'email' => $pending->email,
-                'password' => $pending->password, // already hashed
-                'email_verified_at' => now(),
-                'account_type' => AccountType::CUSTOMER, // default until onboarding
-                'onboarding_completed' => false,
-            ]);
-
-            $user->assignRole(RoleName::CUSTOMER->value);
-
-            $this->pendingRepo->delete($pending);
-
-            return $user;
-        });
-
-        return $user;
-    }
-
-    public function resendVerification(string $email): void
-    {
-        $pending = $this->pendingRepo->findByEmail($email);
-
-        if (! $pending) {
-            // Generic response — do not leak whether email is registered.
+            // generic success to avoid enumeration
             return;
         }
 
-        $cooldown = (int) config('auth.verification_resend_cooldown_seconds', 60) ?: 60;
-
-        if (! $pending->canResend($cooldown)) {
-            $wait = $pending->last_sent_at->addSeconds($cooldown)->diffInSeconds(now());
-            throw ValidationException::withMessages([
-                'email' => ["Please wait {$wait} seconds before requesting a new code."],
-            ]);
+        if ($pending->last_sent_at && $pending->last_sent_at->diffInSeconds(now()) < (int) config('auth.resend_cooldown', 60)) {
+            throw new UnprocessableEntityHttpException('Please wait before requesting a new code.');
         }
 
-        $code = $this->codeService->generate();
-        $ttl = (int) config('auth.verification_code_ttl_minutes', 15) ?: 15;
-
-        $this->pendingRepo->update($pending, [
-            'verification_code' => $this->codeService->hash($code),
-            'attempts' => 0,
-            'expires_at' => now()->addMinutes($ttl),
+        $plain = $this->generateCode();
+        $this->pendingRepo->upsert($email, [
+            'code_hash' => Hash::make($plain),
+            'expires_at' => now()->addMinutes((int) config('auth.code_ttl', 10)),
             'last_sent_at' => now(),
+            'attempts' => 0,
         ]);
 
-        SendVerificationCodeJob::dispatch($pending->email, $code);
+        Mail::to($email)->queue(new VerificationCodeMail($pending->name, $email, $plain));
+
     }
-}<?php
 
-namespace App\Services\Auth;
-
-use App\Models\User;
-use App\Repositories\Contracts\Auth\UserRepositoryInterface;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
-
-class LoginService
-{
-    public function __construct(
-        private UserRepositoryInterface $userRepo,
-    ) {}
-
-    public function attempt(string $email, string $password): User
+    public function verify(string $email, string $plainCode, ?string $ip): User
     {
-        $user = $this->userRepo->findByEmail($email);
-
-        // Generic message to reduce account enumeration.
-        if (! $user || ! $user->hasPassword() || ! Hash::check($password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
+        $pending = $this->pendingRepo->findByEmail($email);
+        if (! $pending || $pending->isExpired()) {
+            throw new UnprocessableEntityHttpException('Invalid or expired code.');
         }
 
-        if (! $user->email_verified_at) {
-            throw ValidationException::withMessages([
-                'email' => ['Please verify your email address before logging in.'],
-            ]);
+        if ($pending->attempts >= 5) {
+            $this->pendingRepo->delete($pending);
+            throw new UnprocessableEntityHttpException('Too many attempts. Please register again.');
         }
 
-        return $user;
+        if (! Hash::check($plainCode, $pending->code_hash)) {
+            $this->pendingRepo->incrementAttempts($pending);
+            throw new UnprocessableEntityHttpException('Invalid or expired code.');
+        }
+
+        return DB::transaction(function () use ($pending, $ip) {
+            $user = $this->userRepo->create([
+                'name' => $pending->name,
+                'email' => $pending->email,
+                'password' => $pending->password, // already hashed
+                'email_verified_at' => now(),
+                'status' => \App\Enums\Auth\UserStatus::ACTIVE->value,
+                'google_id' => null,
+                'facebook_id' => null,
+            ]);
+            $this->userRepo->assignRole($user, UserRole::CUSTOMER->value);
+            $this->pendingRepo->delete($pending);
+            return $user;
+        });
+    }
+
+    private function issueCode(string $name, string $email, string $plainPassword, ?string $ip): void
+    {
+        $plain = $this->generateCode();
+        $this->pendingRepo->upsert($email, [
+            'name' => $name,
+            'password' => Hash::make($plainPassword),
+            'code_hash' => Hash::make($plain),
+            'expires_at' => now()->addMinutes((int) config('auth.code_ttl', 10)),
+            'last_sent_at' => now(),
+            'attempts' => 0,
+            'registered_from_ip' => $ip,
+        ]);
+        Mail::to($email)->queue(new VerificationCodeMail($name, $email, $plain));
+
+    }
+
+    private function generateCode(): string
+    {
+        return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     }
 }<?php
+// app/Services/Auth/PasswordResetService.php
 
 namespace App\Services\Auth;
 
-use App\Jobs\Auth\SendPasswordResetJob;
+use App\Mail\Auth\PasswordResetCodeMail;
+use App\Mail\Auth\SetPasswordCodeMail;
+use App\Models\Auth\User;
+use App\Repositories\Contracts\Auth\PasswordResetCodeRepositoryInterface;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Mail;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class PasswordResetService
 {
     public function __construct(
+        private PasswordResetCodeRepositoryInterface $codeRepo,
         private UserRepositoryInterface $userRepo,
     ) {}
 
-    public function sendResetLink(string $email): void
+    public function sendCode(string $email): void
     {
         $user = $this->userRepo->findByEmail($email);
-
-        // Always generic; never reveal whether the email exists.
-        if (! $user || ! $user->hasPassword()) {
+        if (! $user) {
+            // generic response to avoid enumeration
             return;
         }
 
-        $plainToken = Str::random(64);
-        $hashedToken = Hash::make($plainToken);
-        $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
+        $existing = $this->codeRepo->findByEmail($email);
+        if ($existing && $existing->last_sent_at && $existing->last_sent_at->diffInSeconds(now()) < 60) {
+            throw new UnprocessableEntityHttpException('Please wait before requesting a new code.');
+        }
 
-        DB::table('password_reset_tokens')->updateOrInsert(
-            ['email' => $email],
-            [
-                'token' => $hashedToken,
-                'created_at' => now(),
-            ],
-        );
+        $plain = $this->generateCode();
+        $this->codeRepo->upsert($email, [
+            'code_hash' => Hash::make($plain),
+            'expires_at' => now()->addMinutes((int) config('auth.code_ttl', 10)),
+            'last_sent_at' => now(),
+            'attempts' => 0,
+        ]);
 
-        // The plain token is emailed to the user; only the hash is stored.
-        SendPasswordResetJob::dispatch($email, $plainToken, $ttl);
+        // Social-only users have no password yet — send a "set password" email
+        // instead of a "reset password" email. Both flows reuse the same code table.
+        if ($user->password === null) {
+            Mail::to($email)->queue(new SetPasswordCodeMail($user->name, $email, $plain));
+            return;
+        }
+
+        Mail::to($email)->queue(new PasswordResetCodeMail($user->name, $email, $plain));
     }
 
-    public function reset(string $email, string $plainToken, string $newPassword): void
+    public function reset(string $email, string $plainCode, string $newPassword): void
     {
-        $user = $this->userRepo->findByEmail($email);
+        $user = $this->consumeCode($email, $plainCode);
 
-        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
-
-        if (! $user || ! $record || ! Hash::check($plainToken, $record->token)) {
-            throw ValidationException::withMessages([
-                'token' => ['This password reset token is invalid.'],
-            ]);
-        }
-
-        $ttl = (int) config('auth.password_reset_ttl_minutes', 60) ?: 60;
-
-        if (now()->diffInMinutes($record->created_at) > $ttl) {
-            DB::table('password_reset_tokens')->where('email', $email)->delete();
-            throw ValidationException::withMessages([
-                'token' => ['This password reset token has expired.'],
-            ]);
-        }
-
-        DB::transaction(function () use ($user, $email, $newPassword) {
+        if ($user->password === null) {
+            // Defensive: reset endpoint must not be used for social-only users.
+            // They should use set-password. Still allow it here as a safety net.
             $this->userRepo->updatePassword($user, Hash::make($newPassword));
-            DB::table('password_reset_tokens')->where('email', $email)->delete();
-            // Invalidate sessions/tokens on password change.
-            $user->tokens()->delete();
-        });
-    }
-}<?php
-
-namespace App\Services\Auth;
-
-use App\Enums\Auth\AccountType;
-use App\Enums\Auth\RoleName;
-use App\Models\User;
-use App\Repositories\Contracts\Auth\SocialAccountRepositoryInterface;
-use App\Repositories\Contracts\Auth\UserRepositoryInterface;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Laravel\Socialite\Facades\Socialite;
-
-class SocialAuthService
-{
-    public function __construct(
-        private UserRepositoryInterface $userRepo,
-        private SocialAccountRepositoryInterface $socialRepo,
-    ) {}
-
-    public function redirect(string $provider)
-    {
-        return Socialite::driver($provider)->redirect();
-    }
-
-    public function callback(string $provider): User
-    {
-        $socialUser = Socialite::driver($provider)->user();
-
-        // 1. Already linked social account?
-        $linked = $this->socialRepo->findByProvider($provider, (string) $socialUser->getId());
-
-        if ($linked) {
-            return $linked->user;
+            $this->userRepo->invalidateSessions($user);
+            return;
         }
 
-        // 2. Existing user with same verified email? Link it.
-        if ($socialUser->getEmail()) {
-            $existing = $this->userRepo->findByEmail($socialUser->getEmail());
+        $this->userRepo->updatePassword($user, Hash::make($newPassword));
+        $this->userRepo->invalidateSessions($user);
+    }
 
-            if ($existing) {
-                $this->socialRepo->create([
-                    'user_id' => $existing->id,
-                    'provider' => $provider,
-                    'provider_user_id' => (string) $socialUser->getId(),
-                ]);
+    public function setPassword(string $email, string $plainCode, string $newPassword): void
+    {
+        $user = $this->consumeCode($email, $plainCode);
 
-                // Ensure email is marked verified because the provider verified it.
-                if (! $existing->email_verified_at) {
-                    $this->userRepo->markEmailVerified($existing);
-                }
-
-                return $existing->refresh();
-            }
+        if ($user->password !== null) {
+            // Defensive: once a password exists, only reset/change-password may be used.
+            throw new UnprocessableEntityHttpException('A password is already set for this account.');
         }
 
-        // 3. Brand new user — social email is verified by the provider.
-        $user = DB::transaction(function () use ($provider, $socialUser) {
-            $email = $socialUser->getEmail() ?? Str::uuid().'@social.local';
+        $this->userRepo->updatePassword($user, Hash::make($newPassword));
+        $this->userRepo->invalidateSessions($user);
+    }
 
-            $user = $this->userRepo->create([
-                'email' => $email,
-                'password' => null,
-                'email_verified_at' => now(),
-                'account_type' => AccountType::CUSTOMER,
-                'onboarding_completed' => false,
-            ]);
+    public function changePassword(User $user, string $currentPassword, string $newPassword): void
+    {
+        if (! $user->password || ! Hash::check($currentPassword, $user->password)) {
+            throw new UnprocessableEntityHttpException('Current password is incorrect.');
+        }
+        $this->userRepo->updatePassword($user, Hash::make($newPassword));
+        // invalidate other sessions
+        $this->userRepo->invalidateSessions($user, request()->session()->getId());
+    }
 
-            $user->assignRole(RoleName::CUSTOMER->value);
+    /**
+     * Verifies and consumes a password reset / set-password code, returning the user.
+     * Shared by reset() and setPassword().
+     */
+    private function consumeCode(string $email, string $plainCode): User
+    {
+        $record = $this->codeRepo->findByEmail($email);
+        if (! $record || $record->isExpired()) {
+            throw new UnprocessableEntityHttpException('Invalid or expired code.');
+        }
+        if ($record->attempts >= 5) {
+            $this->codeRepo->delete($record);
+            throw new UnprocessableEntityHttpException('Too many attempts. Please request a new code.');
+        }
+        if (! Hash::check($plainCode, $record->code_hash)) {
+            $this->codeRepo->incrementAttempts($record);
+            throw new UnprocessableEntityHttpException('Invalid or expired code.');
+        }
 
-            $this->socialRepo->create([
-                'user_id' => $user->id,
-                'provider' => $provider,
-                'provider_user_id' => (string) $socialUser->getId(),
-            ]);
+        $user = $this->userRepo->findByEmail($email);
+        if (! $user) {
+            throw new UnprocessableEntityHttpException('Unable to complete the request.');
+        }
 
-            return $user;
-        });
+        $this->codeRepo->delete($record);
 
         return $user;
     }
+
+    private function generateCode(): string
+    {
+        return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    }
 }<?php
+// app/Services/Auth/SocialAuthService.php
 
 namespace App\Services\Auth;
 
-use App\Enums\Auth\AccountType;
-use App\Models\User;
+use App\Enums\Auth\UserRole;
+use App\Enums\Auth\UserStatus;
+use App\Models\Auth\User;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialUser;
+
+class SocialAuthService
+{
+    public function __construct(private UserRepositoryInterface $userRepo) {}
+
+    public function redirectUrl(string $provider): string
+    {
+        return Socialite::driver($provider)
+            ->stateless(false)
+            ->with(['prompt' => 'select_account'])
+            ->redirect()
+            ->getTargetUrl();
+    }
+
+    public function handleCallback(string $provider): User
+    {
+        /** @var SocialUser $social */
+        $social = Socialite::driver($provider)->stateless(false)->user();
+
+        $email = $social->getEmail();
+        if (! $email) {
+            throw new \RuntimeException('No email returned from provider.');
+        }
+
+        return DB::transaction(function () use ($provider, $social, $email) {
+            $existing = User::where('email', $email)->first();
+            if ($existing) {
+                if ($provider === 'google' && ! $existing->google_id) {
+                    $existing->google_id = $social->getId();
+                }
+                if ($provider === 'facebook' && ! $existing->facebook_id) {
+                    $existing->facebook_id = $social->getId();
+                }
+                $existing->save();
+                Auth::login($existing, true);
+                request()->session()->regenerate();
+                return $existing;
+            }
+
+            $user = $this->userRepo->create([
+                'name' => $social->getName() ?: Str::before($email, '@'),
+                'email' => $email,
+                'password' => null,
+                'email_verified_at' => now(),
+                'status' => UserStatus::ACTIVE->value,
+                'google_id' => $provider === 'google' ? $social->getId() : null,
+                'facebook_id' => $provider === 'facebook' ? $social->getId() : null,
+            ]);
+            $this->userRepo->assignRole($user, UserRole::CUSTOMER->value);
+            Auth::login($user, true);
+            request()->session()->regenerate();
+            return $user;
+        });
+    }
+}<?php
+// app/Services/Auth/OnboardingService.php
+
+namespace App\Services\Auth;
+
+use App\Enums\Auth\OnboardingChoice;
+use App\Models\Auth\User;
 
 class OnboardingService
 {
-    public function __construct(
-        private UserRepositoryInterface $userRepo,
-    ) {}
-
-    public function chooseRole(User $user, string $accountType): User
+    public function complete(User $user, OnboardingChoice $choice): User
     {
-        if ($user->onboarding_completed) {
+        $user->forceFill([
+            'onboarding_choice' => $choice->value,
+            'onboarding_completed_at' => now(),
+        ])->save();
+
+        return $user->fresh();
+    }
+
+    public function skip(User $user): User
+    {
+        // skipping marks the user as a customer
+        return $this->complete($user, OnboardingChoice::CUSTOMER);
+    }
+}<?php
+// app/Services/Auth/MfaService.php
+
+namespace App\Services\Auth;
+
+use App\Models\Auth\User;
+use Illuminate\Support\Facades\Auth;
+use PragmaRX\Google2FA\Google2FA;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+
+class MfaService
+{
+    public function __construct(private Google2FA $google2fa) {}
+
+    /**
+     * @return array{secret: string, otpauth_url: string}
+     */
+    public function setup(User $user): array
+    {
+        if ($user->hasMfaEnabled()) {
+            throw new UnprocessableEntityHttpException('MFA is already enabled.');
+        }
+
+        $secret = $this->google2fa->generateSecretKey();
+        $user->forceFill(['two_factor_secret' => $secret])->save();
+
+        $otpauth = $this->google2fa->getQRCodeUrl(
+            config('app.name'),
+            $user->email,
+            $secret
+        );
+
+        return ['secret' => $secret, 'otpauth_url' => $otpauth];
+    }
+
+    public function confirm(User $user, string $code): void
+    {
+        if ($user->hasMfaEnabled()) {
+            throw new UnprocessableEntityHttpException('MFA is already enabled.');
+        }
+        if (! $user->two_factor_secret) {
+            throw new UnprocessableEntityHttpException('Run MFA setup first.');
+        }
+        if (! $this->google2fa->verifyKey($user->two_factor_secret, $code)) {
+            throw new UnprocessableEntityHttpException('Invalid code.');
+        }
+
+        $user->forceFill(['two_factor_confirmed_at' => now()])->save();
+    }
+
+    public function verifyChallenge(string $code): User
+    {
+        $userId = session('2fa:user_id');
+        if (! $userId) {
+            throw new UnprocessableEntityHttpException('No MFA challenge in progress.');
+        }
+
+        /** @var User|null $user */
+        $user = User::find($userId);
+        if (! $user || ! $user->two_factor_secret || ! $user->hasMfaEnabled()) {
+            session()->forget(['2fa:user_id', '2fa:remember']);
+            throw new UnprocessableEntityHttpException('Invalid MFA state.');
+        }
+
+        if (! $this->google2fa->verifyKey($user->two_factor_secret, $code)) {
+            throw new UnprocessableEntityHttpException('Invalid code.');
+        }
+
+        $remember = (bool) session('2fa:remember', false);
+        session()->forget(['2fa:user_id', '2fa:remember']);
+
+        Auth::login($user, $remember);
+        request()->session()->regenerate();
+
+        return $user;
+    }
+
+    public function disable(User $user): void
+    {
+        $user->forceFill([
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ])->save();
+    }
+}<?php
+// app/Services/Auth/AuthService.php
+
+namespace App\Services\Auth;
+
+use App\Enums\Auth\UserStatus;
+use App\Models\Auth\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+
+class AuthService
+{
+    /**
+     * Attempt to log the user in.
+     * @return array{user: User, requires_mfa: bool}
+     */
+    public function attempt(string $email, string $password, bool $remember = false): array
+    {
+        /** @var User|null $user */
+        $user = User::where('email', $email)->first();
+
+        if (! $user || ! $user->password || ! Hash::check($password, $user->password)) {
+            // generic message (no enumeration)
             throw ValidationException::withMessages([
-                'account_type' => ['Onboarding has already been completed.'],
+                'email' => ['These credentials do not match our records.'],
             ]);
         }
 
-        // Once a user has been approved as an agent, they cannot revert.
-        if ($user->hasRole('agent') && $accountType === AccountType::CUSTOMER->value) {
+        if ($user->status !== UserStatus::ACTIVE) {
             throw ValidationException::withMessages([
-                'account_type' => ['Approved agents cannot switch back to a customer account.'],
+                'email' => ['This account is not active.'],
             ]);
         }
 
-        $enum = AccountType::tryFrom($accountType);
-
-        if (! $enum || $enum === AccountType::SUPER_ADMIN) {
-            throw ValidationException::withMessages([
-                'account_type' => ['Invalid account type selected.'],
+        if ($user->hasMfaEnabled()) {
+            // mark session as MFA-pending; do NOT call Auth::login yet
+            session([
+                '2fa:user_id' => $user->id,
+                '2fa:remember' => $remember,
             ]);
+            return ['user' => $user, 'requires_mfa' => true];
         }
 
-        return $this->userRepo->updateOnboarding($user, [
-            'account_type' => $enum,
-            'onboarding_completed' => true,
-        ]);
+        Auth::login($user, $remember);
+        request()->session()->regenerate();
+
+        return ['user' => $user, 'requires_mfa' => false];
+    }
+
+    public function logout(): void
+    {
+        Auth::guard('web')->logout();
+        request()->session()->invalidate();
+        request()->session()->regenerateToken();
     }
 }<?php
-
-namespace App\Jobs\Auth;
-
-use App\Mail\Auth\VerificationCodeMail;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Mail;
-
-class SendVerificationCodeJob implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public int $tries = 3;
-
-    public function __construct(
-        public string $email,
-        public string $code,
-    ) {}
-
-    public function handle(): void
-    {
-        Mail::to($this->email)->send(new VerificationCodeMail($this->code));
-    }
-}<?php
-
-namespace App\Jobs\Auth;
-
-use App\Mail\Auth\PasswordResetMail;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Mail;
-
-class SendPasswordResetJob implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public int $tries = 3;
-
-    public function __construct(
-        public string $email,
-        public string $plainToken,
-        public int $ttlMinutes,
-    ) {}
-
-    public function handle(): void
-    {
-        Mail::to($this->email)->send(
-            new PasswordResetMail($this->plainToken, $this->ttlMinutes)
-        );
-    }
-}<?php
-
-namespace App\Mail\Auth;
-
-use Illuminate\Bus\Queueable;
-use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Content;
-use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Queue\SerializesModels;
-
-class VerificationCodeMail extends Mailable
-{
-    use Queueable, SerializesModels;
-
-    public function __construct(
-        public string $code,
-    ) {}
-
-    public function envelope(): Envelope
-    {
-        return new Envelope(
-            subject: 'Verify your email address',
-        );
-    }
-
-    public function content(): Content
-    {
-        return new Content(
-            view: 'emails.auth.verification-code',
-            with: ['code' => $this->code],
-        );
-    }
-}   <?php
-
-namespace App\Mail\Auth;
-
-use Illuminate\Bus\Queueable;
-use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Content;
-use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Queue\SerializesModels;
-
-class PasswordResetMail extends Mailable
-{
-    use Queueable, SerializesModels;
-
-    public function __construct(
-        public string $token,
-        public int $ttlMinutes,
-    ) {}
-
-    public function envelope(): Envelope
-    {
-        return new Envelope(
-            subject: 'Reset your password',
-        );
-    }
-
-    public function content(): Content
-    {
-        return new Content(
-            view: 'emails.auth.password-reset',
-            with: [
-                'token' => $this->token,
-                'ttlMinutes' => $this->ttlMinutes,
-            ],
-        );
-    }
-}<?php
+// app/Http/Requests/Auth/RegisterRequest.php
 
 namespace App\Http\Requests\Auth;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Password;
 
 class RegisterRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
+    public function authorize(): bool { return true; }
 
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email', 'max:255'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'name' => ['required', 'string', 'min:2', 'max:255'],
+            'email' => ['required', 'string', 'email:rfc', 'max:255'],
+            'password' => [
+                'required', 'confirmed',
+                Password::min(8)->letters()->mixedCase()->numbers()->symbols(),
+            ],
         ];
     }
 }<?php
-
-namespace App\Http\Requests\Auth;
-
-use Illuminate\Foundation\Http\FormRequest;
-
-class VerifyEmailRequest extends FormRequest
-{
-    public function authorize(): bool
-    {
-        return true;
-    }
-
-    public function rules(): array
-    {
-        return [
-            'email' => ['required', 'string', 'email'],
-            'code' => ['required', 'string', 'digits:6'],
-        ];
-    }
-}<?php
-
-namespace App\Http\Requests\Auth;
-
-use Illuminate\Foundation\Http\FormRequest;
-
-class ResendVerificationRequest extends FormRequest
-{
-    public function authorize(): bool
-    {
-        return true;
-    }
-
-    public function rules(): array
-    {
-        return [
-            'email' => ['required', 'string', 'email'],
-        ];
-    }
-}<?php
+// app/Http/Requests/Auth/LoginRequest.php
 
 namespace App\Http\Requests\Auth;
 
@@ -993,47 +1090,51 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class LoginRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
+    public function authorize(): bool { return true; }
 
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
+            'email' => ['required', 'string', 'email:rfc'],
             'password' => ['required', 'string'],
+            'remember' => ['sometimes', 'boolean'],
         ];
     }
 }<?php
+// app/Http/Requests/Auth/VerifyEmailRequest.php
 
 namespace App\Http\Requests\Auth;
 
-use App\Enums\Auth\AccountType;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
-class ChooseRoleRequest extends FormRequest
+class VerifyEmailRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return $this->user() !== null;
-    }
+    public function authorize(): bool { return true; }
 
     public function rules(): array
     {
         return [
-            'account_type' => [
-                'required',
-                'string',
-                Rule::in([
-                    AccountType::CUSTOMER->value,
-                    AccountType::AGENT->value,
-                ]),
-            ],
+            'email' => ['required', 'string', 'email:rfc'],
+            'code' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/'],
         ];
     }
 }<?php
+// app/Http/Requests/Auth/ResendVerificationRequest.php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ResendVerificationRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return ['email' => ['required', 'string', 'email:rfc']];
+    }
+}<?php
+// app/Http/Requests/Auth/ForgotPasswordRequest.php
 
 namespace App\Http\Requests\Auth;
 
@@ -1041,59 +1142,115 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class ForgotPasswordRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
+    public function authorize(): bool { return true; }
 
     public function rules(): array
     {
-        return [
-            'email' => ['required', 'string', 'email'],
-        ];
+        return ['email' => ['required', 'string', 'email:rfc']];
     }
 }<?php
+// app/Http/Requests/Auth/ResetPasswordRequest.php
 
 namespace App\Http\Requests\Auth;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Password;
 
 class ResetPasswordRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
+    public function authorize(): bool { return true; }
 
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
-            'token' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'email' => ['required', 'string', 'email:rfc'],
+            'code' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/'],
+            'password' => [
+                'required', 'confirmed',
+                Password::min(8)->letters()->mixedCase()->numbers()->symbols(),
+            ],
         ];
     }
 }<?php
+// app/Http/Requests/Auth/ChangePasswordRequest.php
 
 namespace App\Http\Requests\Auth;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Password;
 
 class ChangePasswordRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return $this->user() !== null;
-    }
+    public function authorize(): bool { return true; }
 
     public function rules(): array
     {
         return [
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => [
+                'required', 'confirmed', 'different:current_password',
+                Password::min(8)->letters()->mixedCase()->numbers()->symbols(),
+            ],
         ];
     }
 }<?php
+// app/Http/Requests/Auth/ChooseRoleRequest.php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class ChooseRoleRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'choice' => ['required', Rule::in(['customer', 'agent'])],
+        ];
+    }
+}<?php
+// app/Http/Requests/Auth/MfaVerifyRequest.php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class MfaVerifyRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return ['code' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/']];
+    }
+}<?php
+// app/Http/Requests/Auth/SetPasswordRequest.php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Password;
+
+class SetPasswordRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email:rfc'],
+            'code' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/'],
+            'password' => [
+                'required', 'confirmed',
+                Password::min(8)->letters()->mixedCase()->numbers()->symbols(),
+            ],
+        ];
+    }
+}<?php
+// app/Http/Resources/Auth/UserResource.php
 
 namespace App\Http\Resources\Auth;
 
@@ -1106,16 +1263,181 @@ class UserResource extends JsonResource
     {
         return [
             'uuid' => $this->uuid,
+            'name' => $this->name,
+            'username' => $this->username,
             'email' => $this->email,
-            'email_verified_at' => $this->email_verified_at?->toIso8601String(),
-            'account_type' => $this->account_type?->value ?? $this->account_type,
-            'onboarding_completed' => (bool) $this->onboarding_completed,
+            'email_verified' => (bool) $this->email_verified_at,
+            'status' => $this->status?->value,
             'roles' => $this->getRoleNames(),
-            'has_password' => $this->hasPassword(),
+            'onboarding_completed' => $this->hasCompletedOnboarding(),
+            'onboarding_choice' => $this->onboarding_choice?->value,
+            'has_mfa' => $this->hasMfaEnabled(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 }<?php
+// app/Http/Resources/Auth/AuthUserResource.php
+
+namespace App\Http\Resources\Auth;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AuthUserResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'uuid' => $this->uuid,
+            'name' => $this->name,
+            'username' => $this->username,
+            'email' => $this->email,
+            'email_verified' => (bool) $this->email_verified_at,
+            'status' => $this->status?->value,
+            'roles' => $this->getRoleNames(),
+            'onboarding_completed' => $this->hasCompletedOnboarding(),
+            'onboarding_choice' => $this->onboarding_choice?->value,
+            'has_mfa' => $this->hasMfaEnabled(),
+            'has_password' => $this->password !== null,
+            'is_customer' => $this->hasRole('customer'),
+            'is_agent' => $this->hasRole('agent'),
+            'is_super_admin' => $this->hasRole('super_admin'),
+        ];
+    }
+}<?php
+// app/Mail/Auth/VerificationCodeMail.php
+
+namespace App\Mail\Auth;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class VerificationCodeMail extends Mailable implements ShouldQueue
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public string $recipientName,
+        public string $recipientEmail,
+        public string $code,
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(subject: 'Verify your email — Travel Marketplace');
+    }
+
+    public function content(): Content
+    {
+        // No Blade view. Plain-text body with a link straight to the frontend.
+        $frontend = rtrim(config('app.frontend_url'), '/');
+        $url = $frontend
+            . '/verify-email?email=' . urlencode($this->recipientEmail)
+            . '&code=' . urlencode($this->code);
+
+        $body = "Hi {$this->recipientName},\n\n"
+            . "Thanks for signing up for Travel Marketplace.\n\n"
+            . "Your verification code is: {$this->code}\n\n"
+            . "Or click the link below to verify your email address:\n"
+            . "{$url}\n\n"
+            . "This code expires in 10 minutes. If you did not request this, you can safely ignore this email.\n";
+
+        return new Content(text: $body);
+    }
+}<?php
+// app/Mail/Auth/PasswordResetCodeMail.php
+
+namespace App\Mail\Auth;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class PasswordResetCodeMail extends Mailable implements ShouldQueue
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public string $recipientName,
+        public string $recipientEmail,
+        public string $code,
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(subject: 'Your password reset code — Travel Marketplace');
+    }
+
+    public function content(): Content
+    {
+        // No Blade view. Plain-text body with a link straight to the frontend.
+        $frontend = rtrim(config('app.frontend_url'), '/');
+        $url = $frontend
+            . '/reset-password?email=' . urlencode($this->recipientEmail)
+            . '&code=' . urlencode($this->code);
+
+        $body = "Hi {$this->recipientName},\n\n"
+            . "We received a request to reset your Travel Marketplace password.\n\n"
+            . "Your reset code is: {$this->code}\n\n"
+            . "Or click the link below to choose a new password:\n"
+            . "{$url}\n\n"
+            . "This code expires in 10 minutes. If you did not request this, you can safely ignore this email.\n";
+
+        return new Content(text: $body);
+    }
+}<?php
+// app/Mail/Auth/SetPasswordCodeMail.php
+
+namespace App\Mail\Auth;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class SetPasswordCodeMail extends Mailable implements ShouldQueue
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public string $recipientName,
+        public string $recipientEmail,
+        public string $code,
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(subject: 'Set your password — Travel Marketplace');
+    }
+
+    public function content(): Content
+    {
+        // No Blade view. Plain-text body with a link straight to the frontend.
+        $frontend = rtrim(config('app.frontend_url'), '/');
+        $url = $frontend
+            . '/set-password?email=' . urlencode($this->recipientEmail)
+            . '&code=' . urlencode($this->code);
+
+        $body = "Hi {$this->recipientName},\n\n"
+            . "You signed up for Travel Marketplace with a social account and haven't set a password yet.\n\n"
+            . "Your verification code is: {$this->code}\n\n"
+            . "Or click the link below to set a password:\n"
+            . "{$url}\n\n"
+            . "This code expires in 10 minutes. If you did not request this, you can safely ignore this email.\n";
+
+        return new Content(text: $body);
+    }
+}<?php
+// app/Http/Controllers/Auth/RegisterController.php
 
 namespace App\Http\Controllers\Auth;
 
@@ -1123,148 +1445,123 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\ResendVerificationRequest;
 use App\Http\Requests\Auth\VerifyEmailRequest;
-use App\Http\Resources\Auth\UserResource;
+use App\Http\Resources\Auth\AuthUserResource;
 use App\Services\Auth\RegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 
-class RegistrationController extends Controller
+class RegisterController extends Controller
 {
-    public function __construct(
-        private RegistrationService $registrationService,
-    ) {}
+    public function __construct(private RegistrationService $registration) {}
 
     public function register(RegisterRequest $request): JsonResponse
     {
-        $this->registrationService->register(
-            $request->string('email')->toString(),
-            $request->string('password')->toString(),
+        $this->registration->register(
+            $request->string('name'),
+            $request->string('email'),
+            $request->string('password'),
             $request->ip(),
         );
 
         return response()->json([
-            'success' => true,
-            'message' => 'A 6-digit verification code has been sent to your email.',
-            'data' => null,
+            'message' => 'A verification code has been sent to your email.',
         ], 201);
-    }
-
-    public function verify(VerifyEmailRequest $request): JsonResponse
-    {
-        $user = $this->registrationService->verifyEmail(
-            $request->string('email')->toString(),
-            $request->string('code')->toString(),
-        );
-
-        Auth::guard('web')->login($user);
-        $request->session()->regenerate();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Email verified successfully. Welcome!',
-            'data' => new UserResource($user),
-        ]);
     }
 
     public function resend(ResendVerificationRequest $request): JsonResponse
     {
-        $this->registrationService->resendVerification(
-            $request->string('email')->toString(),
-        );
+        $this->registration->resend($request->string('email'));
 
-        // Always return the same message to avoid enumeration.
         return response()->json([
-            'success' => true,
-            'message' => 'If this email is pending verification, a new code has been sent.',
-            'data' => null,
+            'message' => 'If an account exists for this email, a new code has been sent.',
         ]);
     }
+
+    public function verify(VerifyEmailRequest $request): JsonResponse
+    {
+        $user = $this->registration->verify(
+            $request->string('email'),
+            $request->string('code'),
+            $request->ip(),
+        );
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        return (new AuthUserResource($user))->response()->setStatusCode(200);
+    }
 }<?php
+// app/Http/Controllers/Auth/LoginController.php
 
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Resources\Auth\UserResource;
-use App\Services\Auth\LoginService;
+use App\Http\Resources\Auth\AuthUserResource;
+use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class LoginController extends Controller
 {
-    public function __construct(
-        private LoginService $loginService,
-    ) {}
+    public function __construct(private AuthService $auth) {}
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = $this->loginService->attempt(
-            $request->string('email')->toString(),
-            $request->string('password')->toString(),
+        $result = $this->auth->attempt(
+            $request->string('email'),
+            $request->string('password'),
+            (bool) $request->boolean('remember'),
         );
 
-        Auth::guard('web')->login($user);
-        $request->session()->regenerate();
+        if ($result['requires_mfa']) {
+            return response()->json([
+                'requires_mfa' => true,
+                'message' => 'Enter your two-factor authentication code.',
+            ]);
+        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged in successfully.',
-            'data' => new UserResource($user),
-        ]);
-    }
-
-    public function logout(Request $request): JsonResponse
-    {
-        Auth::guard('web')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully.',
-            'data' => null,
-        ]);
+        return (new AuthUserResource($result['user']))->response();
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'message' => 'Authenticated user retrieved.',
-            'data' => new UserResource($request->user()),
-        ]);
+        // if user is in MFA-pending state, tell frontend
+        if (session('2fa:user_id')) {
+            return response()->json([
+                'requires_mfa' => true,
+                'message' => 'MFA verification required.',
+            ], 401);
+        }
+
+        if (! $request->user()) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        return (new AuthUserResource($request->user()))->response();
     }
 }<?php
+// app/Http/Controllers/Auth/LogoutController.php
 
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\ChooseRoleRequest;
-use App\Http\Resources\Auth\UserResource;
-use App\Services\Auth\OnboardingService;
+use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
-class OnboardingController extends Controller
+class LogoutController extends Controller
 {
-    public function __construct(
-        private OnboardingService $onboardingService,
-    ) {}
+    public function __construct(private AuthService $auth) {}
 
-    public function chooseRole(ChooseRoleRequest $request): JsonResponse
+    public function __invoke(Request $request): JsonResponse
     {
-        $user = $this->onboardingService->chooseRole(
-            $request->user(),
-            $request->string('account_type')->toString(),
-        );
+        $this->auth->logout();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Onboarding completed. Please set up your profile.',
-            'data' => new UserResource($user),
-        ]);
+        return response()->json(['message' => 'Logged out.']);
     }
 }<?php
+// app/Http/Controllers/Auth/PasswordController.php
 
 namespace App\Http\Controllers\Auth;
 
@@ -1272,212 +1569,229 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
+use App\Http\Requests\Auth\SetPasswordRequest;
 use App\Services\Auth\PasswordResetService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class PasswordController extends Controller
 {
-    public function __construct(
-        private PasswordResetService $passwordResetService,
-    ) {}
+    public function __construct(private PasswordResetService $service) {}
 
     public function forgot(ForgotPasswordRequest $request): JsonResponse
     {
-        $this->passwordResetService->sendResetLink(
-            $request->string('email')->toString(),
-        );
+        $this->service->sendCode($request->string('email'));
 
+        // Message stays generic — frontend can't tell reset vs set-password from here.
         return response()->json([
-            'success' => true,
-            'message' => 'If an account exists for this email, a reset link has been sent.',
-            'data' => null,
+            'message' => 'If an account exists for this email, a code has been sent.',
         ]);
     }
 
     public function reset(ResetPasswordRequest $request): JsonResponse
     {
-        $this->passwordResetService->reset(
-            $request->string('email')->toString(),
-            $request->string('token')->toString(),
-            $request->string('password')->toString(),
+        $this->service->reset(
+            $request->string('email'),
+            $request->string('code'),
+            $request->string('password'),
         );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Password reset successfully. Please log in with your new password.',
-            'data' => null,
-        ]);
+        return response()->json(['message' => 'Password reset successfully. Please log in.']);
+    }
+
+    public function setPassword(SetPasswordRequest $request): JsonResponse
+    {
+        $this->service->setPassword(
+            $request->string('email'),
+            $request->string('code'),
+            $request->string('password'),
+        );
+
+        return response()->json(['message' => 'Password set successfully. Please log in.']);
     }
 
     public function change(ChangePasswordRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $this->service->changePassword(
+            $request->user(),
+            $request->string('current_password'),
+            $request->string('password'),
+        );
 
-        if (! $user->hasPassword() || ! Hash::check($request->string('current_password')->toString(), $user->password)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
-
-        $user->forceFill(['password' => Hash::make($request->string('password')->toString())])->save();
-        $user->tokens()->delete(); // invalidate any personal access tokens
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Password changed successfully.',
-            'data' => null,
-        ]);
+        return response()->json(['message' => 'Password updated successfully.']);
     }
 }<?php
+// app/Http/Controllers/Auth/OnboardingController.php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Enums\Auth\OnboardingChoice;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChooseRoleRequest;
+use App\Http\Resources\Auth\AuthUserResource;
+use App\Services\Auth\OnboardingService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class OnboardingController extends Controller
+{
+    public function __construct(private OnboardingService $service) {}
+
+    public function chooseRole(ChooseRoleRequest $request): JsonResponse
+    {
+        $user = $this->service->complete(
+            $request->user(),
+            OnboardingChoice::from($request->string('choice')),
+        );
+
+        return (new AuthUserResource($user))->response();
+    }
+
+    public function skip(Request $request): JsonResponse
+    {
+        $user = $this->service->skip($request->user());
+        return (new AuthUserResource($user))->response();
+    }
+}<?php
+// app/Http/Controllers/Auth/MfaController.php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\MfaVerifyRequest;
+use App\Http\Resources\Auth\AuthUserResource;
+use App\Services\Auth\MfaService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class MfaController extends Controller
+{
+    public function __construct(private MfaService $service) {}
+
+    public function setup(Request $request): JsonResponse
+    {
+        $data = $this->service->setup($request->user());
+        return response()->json($data);
+    }
+
+    public function confirm(MfaVerifyRequest $request): JsonResponse
+    {
+        $this->service->confirm($request->user(), $request->string('code'));
+        return response()->json(['message' => 'MFA enabled.']);
+    }
+
+    public function verify(MfaVerifyRequest $request): JsonResponse
+    {
+        $user = $this->service->verifyChallenge($request->string('code'));
+        return (new AuthUserResource($user))->response();
+    }
+
+    public function disable(Request $request): JsonResponse
+    {
+        $this->service->disable($request->user());
+        return response()->json(['message' => 'MFA disabled.']);
+    }
+}<?php
+// app/Http/Controllers/Auth/SocialAuthController.php
 
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\Auth\SocialAuthService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class SocialAuthController extends Controller
 {
-    public function __construct(
-        private SocialAuthService $socialAuthService,
-    ) {}
+    public function __construct(private SocialAuthService $service) {}
 
-    public function redirect(string $provider): RedirectResponse
+    public function redirect(string $provider): JsonResponse
     {
-        $this->ensureSupported($provider);
-
-        return $this->socialAuthService->redirect($provider);
+        $this->assertProvider($provider);
+        return response()->json(['url' => $this->service->redirectUrl($provider)]);
     }
 
-    public function callback(string $provider, Request $request): RedirectResponse
+    public function callback(string $provider): RedirectResponse
     {
-        $this->ensureSupported($provider);
-
-        $user = $this->socialAuthService->callback($provider);
-
-        Auth::guard('web')->login($user);
-        $request->session()->regenerate();
-
-        // Redirect to SPA; onboarding is decided on the frontend via /auth/me.
-        return redirect()->away(
-            rtrim(config('app.frontend_url', env('FRONTEND_URL')), '/').'/auth/social/callback'
-        );
+        $this->assertProvider($provider);
+        try {
+            $this->service->handleCallback($provider);
+            return redirect()->away(rtrim(config('app.frontend_url'), '/') . '/auth/social/success');
+        } catch (\Throwable $e) {
+            Log::warning('social login failed', ['provider' => $provider, 'error' => $e->getMessage()]);
+            return redirect()->away(rtrim(config('app.frontend_url'), '/') . '/auth/social/error');
+        }
     }
 
-    private function ensureSupported(string $provider): void
+    private function assertProvider(string $provider): void
     {
         abort_unless(in_array($provider, ['google', 'facebook'], true), 404);
     }
 }<?php
+// routes/auth.php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\Auth\MfaController;
 use App\Http\Controllers\Auth\OnboardingController;
 use App\Http\Controllers\Auth\PasswordController;
-use App\Http\Controllers\Auth\RegistrationController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 
-// Public authentication endpoints.
-Route::prefix('auth')->group(function () {
-    // Registration + verification (no users row created until verified).
-    Route::post('/register', [RegistrationController::class, 'register'])
-        ->middleware('throttle:auth.registration');
-    Route::post('/verify-email', [RegistrationController::class, 'verify'])
-        ->middleware('throttle:auth.verify');
-    Route::post('/resend-verification', [RegistrationController::class, 'resend'])
-        ->middleware('throttle:auth.registration');
+// Public
+Route::post('register', [RegisterController::class, 'register'])->middleware('throttle:auth-register');
+Route::post('verify-email', [RegisterController::class, 'verify'])->middleware('throttle:auth-verify');
+Route::post('resend-verification', [RegisterController::class, 'resend'])->middleware('throttle:auth-resend');
+Route::post('login', [LoginController::class, 'login'])->middleware('throttle:auth-login');
+Route::post('forgot-password', [PasswordController::class, 'forgot'])->middleware('throttle:auth-forgot');
+Route::post('reset-password', [PasswordController::class, 'reset'])->middleware('throttle:auth-reset');
+Route::post('set-password', [PasswordController::class, 'setPassword'])->middleware('throttle:auth-reset');
 
-    // Login / logout / me.
-    Route::post('/login', [LoginController::class, 'login'])
-        ->middleware('throttle:auth.login');
 
-    // Password reset.
-    Route::post('/forgot-password', [PasswordController::class, 'forgot'])
-        ->middleware('throttle:auth.registration');
-    Route::post('/reset-password', [PasswordController::class, 'reset'])
-        ->middleware('throttle:auth.registration');
 
-    // Social login (Google / Facebook).
-    Route::get('/social/{provider}/redirect', [SocialAuthController::class, 'redirect'])
-        ->middleware('throttle:auth.social');
-    Route::get('/social/{provider}/callback', [SocialAuthController::class, 'callback'])
-        ->middleware('throttle:auth.social');
+// MFA challenge (still unauthenticated, session-based pending state)
+Route::post('mfa/verify', [MfaController::class, 'verify'])->middleware('throttle:auth-mfa-verify');
 
-    // Authenticated endpoints.
-    Route::middleware('auth:sanctum')->group(function () {
-        Route::get('/me', [LoginController::class, 'me']);
-        Route::post('/logout', [LoginController::class, 'logout']);
-        Route::post('/onboarding/choose-role', [OnboardingController::class, 'chooseRole']);
-        Route::post('/change-password', [PasswordController::class, 'change']);
-    });
+// Social
+Route::get('social/{provider}/redirect', [SocialAuthController::class, 'redirect'])->middleware('throttle:auth-social');
+Route::get('social/{provider}/callback', [SocialAuthController::class, 'callback']);
+
+// Authenticated
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('me', [LoginController::class, 'me']);
+    Route::post('logout', LogoutController::class)->middleware('throttle:auth-logout');
+
+    Route::post('change-password', [PasswordController::class, 'change'])
+        ->middleware('throttle:auth-change-password');
+
+    // Onboarding
+    Route::post('onboarding/choose-role', [OnboardingController::class, 'chooseRole'])
+        ->middleware('throttle:auth-onboarding');
+    Route::post('onboarding/skip', [OnboardingController::class, 'skip'])
+        ->middleware('throttle:auth-onboarding');
+
+    // MFA management
+    Route::post('mfa/setup', [MfaController::class, 'setup'])->middleware('throttle:auth-mfa-setup');
+    Route::post('mfa/confirm', [MfaController::class, 'confirm'])->middleware('throttle:auth-mfa-setup');
+    Route::post('mfa/disable', [MfaController::class, 'disable'])->middleware('throttle:auth-mfa-setup');
 });<?php
+// database/seeders/Auth/RoleSeeder.php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Auth;
 
-use App\Enums\Auth\RoleName;
 use Illuminate\Database\Seeder;
-use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
-class RoleAndPermissionSeeder extends Seeder
+class RoleSeeder extends Seeder
 {
     public function run(): void
     {
-        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        // Base permissions (extend per module later).
-        $permissions = [
-            'manage platform',
-            'manage agents',
-            'manage services',
-            'manage bookings',
-        ];
-
-        foreach ($permissions as $permission) {
-            Permission::findOrCreate($permission, 'web');
-        }
-
-        // Roles (idempotent).
-        $customer = Role::findOrCreate(RoleName::CUSTOMER->value, 'web');
-        $customer->syncPermissions([]);
-
-        $agent = Role::findOrCreate(RoleName::AGENT->value, 'web');
-        $agent->syncPermissions([]);
-
-        $superAdmin = Role::findOrCreate(RoleName::SUPER_ADMIN->value, 'web');
-        $superAdmin->syncPermissions(Permission::all());
-    }
-}<?php
-
-namespace Database\Seeders;
-
-use App\Enums\Auth\AccountType;
-use App\Enums\Auth\RoleName;
-use App\Models\User;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
-
-class SuperAdminSeeder extends Seeder
-{
-    public function run(): void
-    {
-        $user = User::firstOrCreate(
-            ['email' => 'admin@travelmarketplace.test'],
-            [
-                'password' => Hash::make('admin@travelmarketplace.test'),
-                'email_verified_at' => now(),
-                'account_type' => AccountType::SUPER_ADMIN,
-                'onboarding_completed' => true,
-            ],
-        );
-
-        $user->syncRoles([RoleName::SUPER_ADMIN->value]);
-
-        $this->command->warn('SuperAdmin created: admin@travelmarketplace.test — change the password immediately.');
+        Role::findOrCreate('customer', 'web');
+        Role::findOrCreate('agent', 'web');
+        Role::findOrCreate('super_admin', 'web');
     }
 }

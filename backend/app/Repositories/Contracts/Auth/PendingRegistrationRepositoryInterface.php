@@ -1,4 +1,5 @@
 <?php
+// app/Repositories/Contracts/Auth/PendingRegistrationRepositoryInterface.php
 
 namespace App\Repositories\Contracts\Auth;
 
@@ -8,11 +9,9 @@ interface PendingRegistrationRepositoryInterface
 {
     public function findByEmail(string $email): ?PendingRegistration;
 
-    public function create(array $data): PendingRegistration;
-
-    public function update(PendingRegistration $pending, array $data): PendingRegistration;
-
-    public function delete(PendingRegistration $pending): void;
+    public function upsert(string $email, array $data): PendingRegistration;
 
     public function incrementAttempts(PendingRegistration $pending): void;
+
+    public function delete(PendingRegistration $pending): void;
 }

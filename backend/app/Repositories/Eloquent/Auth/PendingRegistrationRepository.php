@@ -1,4 +1,5 @@
 <?php
+// app/Repositories/Eloquent/Auth/PendingRegistrationRepository.php
 
 namespace App\Repositories\Eloquent\Auth;
 
@@ -12,25 +13,21 @@ class PendingRegistrationRepository implements PendingRegistrationRepositoryInte
         return PendingRegistration::where('email', $email)->first();
     }
 
-    public function create(array $data): PendingRegistration
+    public function upsert(string $email, array $data): PendingRegistration
     {
-        return PendingRegistration::create($data);
-    }
-
-    public function update(PendingRegistration $pending, array $data): PendingRegistration
-    {
-        $pending->update($data);
-
-        return $pending->refresh();
-    }
-
-    public function delete(PendingRegistration $pending): void
-    {
-        $pending->delete();
+        return PendingRegistration::updateOrCreate(
+            ['email' => $email],
+            $data + ['email' => $email]
+        );
     }
 
     public function incrementAttempts(PendingRegistration $pending): void
     {
         $pending->increment('attempts');
+    }
+
+    public function delete(PendingRegistration $pending): void
+    {
+        $pending->delete();
     }
 }

@@ -1,57 +1,51 @@
 <?php
+// app/Http/Controllers/Auth/LoginController.php
 
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Resources\Auth\UserResource;
-use App\Services\Auth\LoginService;
+use App\Http\Resources\Auth\AuthUserResource;
+use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class LoginController extends Controller
 {
-    public function __construct(
-        private LoginService $loginService,
-    ) {}
+    public function __construct(private AuthService $auth) {}
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = $this->loginService->attempt(
-            $request->string('email')->toString(),
-            $request->string('password')->toString(),
+        $result = $this->auth->attempt(
+            $request->string('email'),
+            $request->string('password'),
+            (bool) $request->boolean('remember'),
         );
 
-        Auth::guard('web')->login($user);
-        $request->session()->regenerate();
+        if ($result['requires_mfa']) {
+            return response()->json([
+                'requires_mfa' => true,
+                'message' => 'Enter your two-factor authentication code.',
+            ]);
+        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged in successfully.',
-            'data' => new UserResource($user),
-        ]);
-    }
-
-    public function logout(Request $request): JsonResponse
-    {
-        Auth::guard('web')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully.',
-            'data' => null,
-        ]);
+        return (new AuthUserResource($result['user']))->response();
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'message' => 'Authenticated user retrieved.',
-            'data' => new UserResource($request->user()),
-        ]);
+        // if user is in MFA-pending state, tell frontend
+        if (session('2fa:user_id')) {
+            return response()->json([
+                'requires_mfa' => true,
+                'message' => 'MFA verification required.',
+            ], 401);
+        }
+
+        if (! $request->user()) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        return (new AuthUserResource($request->user()))->response();
     }
 }

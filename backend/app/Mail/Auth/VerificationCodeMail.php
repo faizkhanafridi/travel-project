@@ -1,53 +1,45 @@
 <?php
+// app/Mail/Auth/VerificationCodeMail.php
 
 namespace App\Mail\Auth;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class VerificationCodeMail extends Mailable
+class VerificationCodeMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
     public function __construct(
+        public string $recipientName,
+        public string $recipientEmail,
         public string $code,
     ) {}
 
     public function envelope(): Envelope
     {
-        return new Envelope(
-            subject: 'Verify your email address',
-        );
+        return new Envelope(subject: 'Verify your email — Travel Marketplace');
     }
 
-    // Render inline HTML — no Blade view required.
     public function content(): Content
     {
-        $html = <<<HTML
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: Arial, sans-serif; background:#f7f7f8; padding:24px;">
-  <div style="max-width:520px; margin:0 auto; background:#ffffff; border-radius:8px; padding:32px;">
-    <h2 style="margin:0 0 16px; color:#111827;">Verify your email address</h2>
-    <p style="margin:0 0 12px; color:#374151;">
-      Use the 6-digit code below to verify your email address. It expires in 15 minutes.
-    </p>
-    <div style="font-size:32px; font-weight:bold; letter-spacing:8px; text-align:center;
-                padding:16px; background:#f3f4f6; border-radius:6px; color:#111827;">
-      {$this->code}
-    </div>
-    <p style="margin:16px 0 0; color:#6b7280; font-size:13px;">
-      If you didn't request this, you can safely ignore this email.
-    </p>
-  </div>
-</body>
-</html>
-HTML;
+        // No Blade view. Plain-text body with a link straight to the frontend.
+        $frontend = rtrim(config('app.frontend_url'), '/');
+        $url = $frontend
+            . '/verify-email?email=' . urlencode($this->recipientEmail)
+            . '&code=' . urlencode($this->code);
 
-        return new Content(htmlString: $html);
+        $body = "Hi {$this->recipientName},\n\n"
+            . "Thanks for signing up for Travel Marketplace.\n\n"
+            . "Your verification code is: {$this->code}\n\n"
+            . "Or click the link below to verify your email address:\n"
+            . "{$url}\n\n"
+            . "This code expires in 10 minutes. If you did not request this, you can safely ignore this email.\n";
+
+        return new Content(text: $body);
     }
 }

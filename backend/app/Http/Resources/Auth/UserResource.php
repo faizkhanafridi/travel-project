@@ -1,4 +1,5 @@
 <?php
+// app/Http/Resources/Auth/UserResource.php
 
 namespace App\Http\Resources\Auth;
 
@@ -11,12 +12,15 @@ class UserResource extends JsonResource
     {
         return [
             'uuid' => $this->uuid,
+            'name' => $this->name,
+            'username' => $this->username,
             'email' => $this->email,
-            'email_verified_at' => $this->email_verified_at?->toIso8601String(),
-            'account_type' => $this->account_type?->value ?? $this->account_type,
-            'onboarding_completed' => (bool) $this->onboarding_completed,
+            'email_verified' => (bool) $this->email_verified_at,
+            'status' => $this->status?->value,
             'roles' => $this->getRoleNames(),
-            'has_password' => $this->hasPassword(),
+            'onboarding_completed' => $this->hasCompletedOnboarding(),
+            'onboarding_choice' => $this->onboarding_choice?->value,
+            'has_mfa' => $this->hasMfaEnabled(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

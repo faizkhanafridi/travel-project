@@ -1,9 +1,12 @@
 <?php
+// app/Repositories/Eloquent/Auth/UserRepository.php
 
 namespace App\Repositories\Eloquent\Auth;
 
-use App\Models\User;
+use App\Models\Auth\User;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class UserRepository implements UserRepositoryInterface
 {
@@ -12,34 +15,30 @@ class UserRepository implements UserRepositoryInterface
         return User::where('email', $email)->first();
     }
 
-    public function findByUuid(string $uuid): ?User
-    {
-        return User::where('uuid', $uuid)->first();
-    }
-
     public function create(array $data): User
     {
+        $data['uuid'] = $data['uuid'] ?? (string) Str::uuid();
+
         return User::create($data);
     }
 
-    public function markEmailVerified(User $user): User
+    public function assignRole(User $user, string $role): void
     {
-        $user->forceFill(['email_verified_at' => now()])->save();
-
-        return $user->refresh();
+        $user->syncRoles([$role]);
     }
 
-    public function updatePassword(User $user, string $hashedPassword): User
+    public function updatePassword(User $user, string $hashedPassword): void
     {
+        // use forceFill to bypass the hashed cast (already hashed)
         $user->forceFill(['password' => $hashedPassword])->save();
-
-        return $user->refresh();
     }
 
-    public function updateOnboarding(User $user, array $data): User
+    public function invalidateSessions(User $user, ?string $exceptSessionId = null): void
     {
-        $user->update($data);
-
-        return $user->refresh();
+        $query = DB::table('sessions')->where('user_id', $user->id);
+        if ($exceptSessionId) {
+            $query->where('id', '!=', $exceptSessionId);
+        }
+        $query->delete();
     }
 }
