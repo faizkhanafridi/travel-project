@@ -40,6 +40,7 @@ class VerificationCodeMail extends Mailable implements ShouldQueue
             . "{$url}\n\n"
             . "This code expires in 10 minutes. If you did not request this, you can safely ignore this email.\n";
 
-        return new Content(text: $body);
+       return new Content(htmlString: nl2br(e($body)));
+
     }
 }

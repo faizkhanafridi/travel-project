@@ -16,14 +16,16 @@ class PasswordController extends Controller
     public function __construct(private PasswordResetService $service) {}
 
     public function forgot(ForgotPasswordRequest $request): JsonResponse
-    {
-        $this->service->sendCode($request->string('email'));
+{
+    $result = $this->service->sendCode($request->string('email'));
 
-        // Message stays generic — frontend can't tell reset vs set-password from here.
-        return response()->json([
-            'message' => 'If an account exists for this email, a code has been sent.',
-        ]);
-    }
+    return response()->json([
+        'message' => 'If an account exists for this email, a code has been sent.',
+        // "reset" | "set" | "unknown" — tells the frontend which page to open.
+        // "unknown" is returned for non-existent emails (no enumeration leak).
+        'flow' => $result,
+    ]);
+}
 
     public function reset(ResetPasswordRequest $request): JsonResponse
     {

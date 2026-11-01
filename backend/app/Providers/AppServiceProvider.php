@@ -32,7 +32,7 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('auth-resend', fn (Request $r) => Limit::perMinutes(5, 3)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
 
-        RateLimiter::for('auth-forgot', fn (Request $r) => Limit::perHour(3)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
+        RateLimiter::for('auth-forgot', fn (Request $r) => Limit::perHour(82)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
 
         RateLimiter::for('auth-reset', function (Request $r) {
             return Limit::perMinutes(10, 5)->by(strtolower($r->input('email', '')) . '|' . $r->ip());

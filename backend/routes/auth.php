@@ -24,9 +24,7 @@ Route::post('set-password', [PasswordController::class, 'setPassword'])->middlew
 // MFA challenge (still unauthenticated, session-based pending state)
 Route::post('mfa/verify', [MfaController::class, 'verify'])->middleware('throttle:auth-mfa-verify');
 
-// Social
-Route::get('social/{provider}/redirect', [SocialAuthController::class, 'redirect'])->middleware('throttle:auth-social');
-Route::get('social/{provider}/callback', [SocialAuthController::class, 'callback']);
+
 
 // Authenticated
 Route::middleware('auth:sanctum')->group(function () {

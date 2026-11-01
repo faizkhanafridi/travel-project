@@ -19,7 +19,7 @@ class SuperAdminSeeder extends Seeder
             [
                 'uuid' => (string) Str::uuid(),
                 'name' => 'Platform Admin',
-                'password' => Hash::make('admin@travelmarketplace.test'),
+                'password' => Hash::make('ChangeMe!2025#Secure'),
                 'email_verified_at' => now(),
                 'status' => UserStatus::ACTIVE->value,
                 'onboarding_completed_at' => now(),

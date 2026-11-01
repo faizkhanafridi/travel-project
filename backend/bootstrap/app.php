@@ -15,18 +15,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         apiPrefix: 'api',
         then: function () {
-            // Module route files – one per module, no v1 prefix
+            // auth routes MUST be wrapped in 'api' middleware so
+            // statefulApi() (Sanctum stateful) is applied.
             Route::middleware('api')
                 ->prefix('api/auth')
+                ->name('auth.')
                 ->group(base_path('routes/auth.php'));
-            // future: user-profile.php, agent.php, etc.
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
-        $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
+
         $middleware->alias([
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,

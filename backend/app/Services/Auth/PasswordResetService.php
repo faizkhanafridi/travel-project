@@ -19,12 +19,13 @@ class PasswordResetService
         private UserRepositoryInterface $userRepo,
     ) {}
 
-    public function sendCode(string $email): void
+    public function sendCode(string $email): string
     {
         $user = $this->userRepo->findByEmail($email);
         if (! $user) {
             // generic response to avoid enumeration
-            return;
+                    return 'unknown';
+
         }
 
         $existing = $this->codeRepo->findByEmail($email);
@@ -44,10 +45,12 @@ class PasswordResetService
         // instead of a "reset password" email. Both flows reuse the same code table.
         if ($user->password === null) {
             Mail::to($email)->queue(new SetPasswordCodeMail($user->name, $email, $plain));
-            return;
+               return 'set';
         }
 
         Mail::to($email)->queue(new PasswordResetCodeMail($user->name, $email, $plain));
+               return 'reset';
+
     }
 
     public function reset(string $email, string $plainCode, string $newPassword): void
