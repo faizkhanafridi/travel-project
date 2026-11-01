@@ -17,7 +17,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Authentication rate limits
+        // MODULE 01 Authentication rate limits
         RateLimiter::for('auth-login', function (Request $request) {
             $key = strtolower($request->input('email', '') . '|' . $request->ip());
             return Limit::perMinute(5)->by($key)
@@ -55,7 +55,7 @@ class AppServiceProvider extends ServiceProvider
 
 
 
-        // User Profle Rate limits
+        // MODULE 02 User Profle Rate limits
         RateLimiter::for('profile-update', fn(Request $r) => Limit::perMinutes(10, 30)->by($r->user()?->id ?? $r->ip()));
 
         RateLimiter::for('email-change-start', fn(Request $r) => Limit::perHour(5)->by($r->user()?->id ?? $r->ip()));
@@ -65,9 +65,9 @@ class AppServiceProvider extends ServiceProvider
         });
 
 
+        // MODULE 03 Agents Rate limits
 
         RateLimiter::for('agent-wizard', fn(Request $r) => Limit::perMinutes(10, 60)->by($r->user()?->id ?? $r->ip()));
-
         RateLimiter::for('agent-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
     }
 }

@@ -5,7 +5,6 @@ namespace App\Models\Auth;
 
 use App\Enums\Auth\OnboardingChoice;
 use App\Enums\Auth\UserStatus;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;

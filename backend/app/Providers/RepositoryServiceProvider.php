@@ -25,14 +25,14 @@ class RepositoryServiceProvider extends ServiceProvider
         $this->app->bind(PendingRegistrationRepositoryInterface::class, PendingRegistrationRepository::class);
         $this->app->bind(PasswordResetCodeRepositoryInterface::class, PasswordResetCodeRepository::class);
 
-    
-          // Module 02
+
+        // Module 02
         $this->app->bind(ProfileRepositoryInterface::class, ProfileRepository::class);
         $this->app->bind(EmailChangeRequestRepositoryInterface::class, EmailChangeRequestRepository::class);
 
 
         // Module 03
-                $this->app->bind(
+        $this->app->bind(
             \App\Repositories\Contracts\Agent\AgentRepositoryInterface::class,
             \App\Repositories\Eloquent\Agent\AgentRepository::class,
         );

@@ -17,16 +17,22 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             // auth routes MUST be wrapped in 'api' middleware so
             // statefulApi() (Sanctum stateful) is applied.
+
+            // Module 01
             Route::middleware('api')
                 ->prefix('api/auth')
                 ->name('auth.')
                 ->group(base_path('routes/auth.php'));
-
-                 Route::middleware('api')
+                
+                
+            // Module 02
+            Route::middleware('api')
                 ->prefix('api/user-profile')
                 ->group(base_path('routes/user-profile.php'));
 
-                Route::middleware('api')
+
+            // Module 03
+            Route::middleware('api')
                 ->prefix('api/agent')
                 ->group(base_path('routes/agent.php'));
         },
