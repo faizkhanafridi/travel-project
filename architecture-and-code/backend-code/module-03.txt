@@ -1,0 +1,1537 @@
+<?php
+// database/migrations/2024_01_03_000100_create_agents_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('agents', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->foreignId('user_id')->unique()->constrained('users')->cascadeOnDelete();
+            $table->string('status')->default('DRAFT'); // DRAFT, PENDING_REVIEW, UNDER_REVIEW, APPROVED, REJECTED, SUSPENDED
+            $table->unsignedInteger('attempt')->default(0); // incremented on each submit
+            $table->timestamp('submitted_at')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->foreignId('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('rejection_reason')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            // Wizard step completion flags
+            $table->boolean('step_agency_saved')->default(false);
+            $table->boolean('step_business_saved')->default(false);
+            $table->boolean('step_documents_saved')->default(false);
+            $table->boolean('step_hours_saved')->default(false);
+            // Connects (temporary — remove when Finance exists)
+            $table->unsignedInteger('connects_balance')->default(0);
+            $table->boolean('connects_awarded')->default(false);
+            $table->timestamps();
+
+            $table->index('status');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('agents');
+    }
+};<?php
+// database/migrations/2024_01_03_000200_create_agent_profiles_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('agent_profiles', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->foreignId('agent_id')->unique()->constrained('agents')->cascadeOnDelete();
+
+            // Step 1 — Agency Information
+            $table->string('agency_name')->nullable();
+            $table->string('agency_owner_name')->nullable();
+            $table->string('agency_phone', 30)->nullable();
+            $table->string('agency_country')->nullable();
+            $table->string('agency_city')->nullable();
+            $table->string('agency_address')->nullable();
+
+            // Step 2 — Business Information
+            $table->text('business_description')->nullable();
+            $table->unsignedSmallInteger('years_in_business')->nullable();
+            $table->string('business_type')->nullable();
+            $table->string('registration_number')->nullable();
+            $table->string('website')->nullable();
+            $table->json('social_media')->nullable();
+            $table->json('languages')->nullable();
+            $table->json('specializations')->nullable();
+
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('agent_profiles');
+    }
+};<?php
+// database/migrations/2024_01_03_000300_create_agent_documents_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('agent_documents', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->foreignId('agent_id')->constrained('agents')->cascadeOnDelete();
+            $table->string('type'); // business_registration, license, identity, other
+            $table->string('original_name');
+            $table->string('file_path');
+            $table->string('mime_type', 100);
+            $table->unsignedBigInteger('size_bytes');
+            $table->timestamp('locked_at')->nullable(); // set when agent approved — becomes view-only
+            $table->timestamps();
+
+            $table->index(['agent_id', 'type']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('agent_documents');
+    }
+};<?php
+// database/migrations/2024_01_03_000400_create_agent_business_hours_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('agent_business_hours', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('agent_id')->constrained('agents')->cascadeOnDelete();
+            $table->unsignedTinyInteger('day_of_week'); // 0 = Sunday ... 6 = Saturday
+            $table->boolean('is_closed')->default(false);
+            $table->string('open_time', 5)->nullable();  // "09:00"
+            $table->string('close_time', 5)->nullable(); // "18:00"
+            $table->timestamps();
+
+            $table->unique(['agent_id', 'day_of_week']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('agent_business_hours');
+    }
+};<?php
+// database/migrations/2024_01_03_000500_create_agent_submission_history_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('agent_submission_history', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->foreignId('agent_id')->constrained('agents')->cascadeOnDelete();
+            $table->unsignedInteger('attempt');
+            $table->string('action'); // submitted, under_review, approved, rejected
+            $table->text('reason')->nullable();
+            $table->foreignId('admin_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->json('snapshot')->nullable(); // frozen agency/business snapshot at time of action
+            $table->timestamps();
+
+            $table->index(['agent_id', 'attempt']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('agent_submission_history');
+    }
+};<?php
+// app/Enums/Agent/AgentStatus.php
+
+namespace App\Enums\Agent;
+
+enum AgentStatus: string
+{
+    case DRAFT = 'DRAFT';
+    case PENDING_REVIEW = 'PENDING_REVIEW';
+    case UNDER_REVIEW = 'UNDER_REVIEW';
+    case APPROVED = 'APPROVED';
+    case REJECTED = 'REJECTED';
+    case SUSPENDED = 'SUSPENDED';
+
+    public function isEditable(): bool
+    {
+        return in_array($this, [self::DRAFT, self::REJECTED], true);
+    }
+}<?php
+// app/Enums/Agent/AgentDocumentType.php
+
+namespace App\Enums\Agent;
+
+enum AgentDocumentType: string
+{
+    case BUSINESS_REGISTRATION = 'business_registration';
+    case LICENSE = 'license';
+    case IDENTITY = 'identity';
+    case OTHER = 'other';
+}<?php
+// app/Models/Agent/Agent.php
+
+namespace App\Models\Agent;
+
+use App\Enums\Agent\AgentStatus;
+use App\Models\Auth\User;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+class Agent extends Model
+{
+    use HasUuids;
+
+    protected $fillable = [
+        'uuid',
+        'user_id',
+        'status',
+        'attempt',
+        'submitted_at',
+        'reviewed_at',
+        'reviewed_by',
+        'rejection_reason',
+        'approved_at',
+        'step_agency_saved',
+        'step_business_saved',
+        'step_documents_saved',
+        'step_hours_saved',
+        'connects_balance',
+        'connects_awarded',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'status' => AgentStatus::class,
+            'submitted_at' => 'datetime',
+            'reviewed_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'step_agency_saved' => 'boolean',
+            'step_business_saved' => 'boolean',
+            'step_documents_saved' => 'boolean',
+            'step_hours_saved' => 'boolean',
+            'connects_awarded' => 'boolean',
+        ];
+    }
+
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function profile(): HasOne
+    {
+        return $this->hasOne(AgentProfile::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(AgentDocument::class);
+    }
+
+    public function businessHours(): HasMany
+    {
+        return $this->hasMany(AgentBusinessHour::class);
+    }
+
+    public function submissionHistory(): HasMany
+    {
+        return $this->hasMany(AgentSubmissionHistory::class);
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->status === AgentStatus::APPROVED;
+    }
+
+    public function isLocked(): bool
+    {
+        // documents locked after approval
+        return $this->status === AgentStatus::APPROVED;
+    }
+}<?php
+// app/Models/Agent/AgentProfile.php
+
+namespace App\Models\Agent;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class AgentProfile extends Model
+{
+    use HasUuids;
+
+    protected $fillable = [
+        'uuid',
+        'agent_id',
+        'agency_name',
+        'agency_owner_name',
+        'agency_phone',
+        'agency_country',
+        'agency_city',
+        'agency_address',
+        'business_description',
+        'years_in_business',
+        'business_type',
+        'registration_number',
+        'website',
+        'social_media',
+        'languages',
+        'specializations',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'social_media' => 'array',
+            'languages' => 'array',
+            'specializations' => 'array',
+        ];
+    }
+
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
+}<?php
+// app/Models/Agent/AgentDocument.php
+
+namespace App\Models\Agent;
+
+use App\Enums\Agent\AgentDocumentType;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class AgentDocument extends Model
+{
+    use HasUuids;
+
+    protected $fillable = [
+        'uuid',
+        'agent_id',
+        'type',
+        'original_name',
+        'file_path',
+        'mime_type',
+        'size_bytes',
+        'locked_at',
+    ];
+
+    protected $hidden = ['file_path'];
+
+    protected function casts(): array
+    {
+        return [
+            'type' => AgentDocumentType::class,
+            'locked_at' => 'datetime',
+        ];
+    }
+
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
+}<?php
+// app/Models/Agent/AgentBusinessHour.php
+
+namespace App\Models\Agent;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class AgentBusinessHour extends Model
+{
+    protected $fillable = [
+        'agent_id',
+        'day_of_week',
+        'is_closed',
+        'open_time',
+        'close_time',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_closed' => 'boolean',
+        ];
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
+}<?php
+// app/Models/Agent/AgentSubmissionHistory.php
+
+namespace App\Models\Agent;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class AgentSubmissionHistory extends Model
+{
+    use HasUuids;
+
+    protected $table = 'agent_submission_history';
+
+    protected $fillable = [
+        'uuid',
+        'agent_id',
+        'attempt',
+        'action',
+        'reason',
+        'admin_id',
+        'snapshot',
+    ];
+
+    protected function casts(): array
+    {
+        return ['snapshot' => 'array'];
+    }
+
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
+}<?php
+// app/Repositories/Contracts/Agent/AgentRepositoryInterface.php
+
+namespace App\Repositories\Contracts\Agent;
+
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+
+interface AgentRepositoryInterface
+{
+    public function findByUser(User $user): ?Agent;
+
+    public function findByUuid(string $uuid): ?Agent;
+
+    public function createForUser(User $user): Agent;
+
+    public function update(Agent $agent, array $data): Agent;
+
+    public function paginateForAdmin(array $filters): LengthAwarePaginator;
+
+    public function paginateApproved(array $filters): LengthAwarePaginator;
+}<?php
+// app/Repositories/Eloquent/Agent/AgentRepository.php
+
+namespace App\Repositories\Eloquent\Agent;
+
+use App\Enums\Agent\AgentStatus;
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use App\Repositories\Contracts\Agent\AgentRepositoryInterface;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
+
+class AgentRepository implements AgentRepositoryInterface
+{
+    public function findByUser(User $user): ?Agent
+    {
+        return Agent::where('user_id', $user->id)->first();
+    }
+
+    public function findByUuid(string $uuid): ?Agent
+    {
+        return Agent::with(['user', 'profile', 'documents', 'businessHours'])->where('uuid', $uuid)->first();
+    }
+
+    public function createForUser(User $user): Agent
+    {
+        return Agent::create([
+            'uuid' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'status' => AgentStatus::DRAFT->value,
+            'attempt' => 0,
+        ]);
+    }
+
+    public function update(Agent $agent, array $data): Agent
+    {
+        $agent->fill($data)->save();
+
+        return $agent->fresh();
+    }
+
+    public function paginateForAdmin(array $filters): LengthAwarePaginator
+    {
+        $query = Agent::query()
+            ->with(['user', 'profile'])
+            ->latest('submitted_at');
+
+        if (! empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        } else {
+            // default: only submitted applications
+            $query->whereIn('status', [
+                AgentStatus::PENDING_REVIEW->value,
+                AgentStatus::UNDER_REVIEW->value,
+                AgentStatus::APPROVED->value,
+                AgentStatus::REJECTED->value,
+            ]);
+        }
+
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', function ($u) use ($search) {
+                    $u->where('name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%");
+                })->orWhereHas('profile', function ($p) use ($search) {
+                    $p->where('agency_name', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        return $query->paginate((int) ($filters['per_page'] ?? 20));
+    }
+
+    public function paginateApproved(array $filters): LengthAwarePaginator
+    {
+        $query = Agent::query()
+            ->with(['user', 'profile'])
+            ->where('status', AgentStatus::APPROVED->value)
+            ->latest('approved_at');
+
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('profile', function ($p) use ($search) {
+                    $p->where('agency_name', 'like', "%{$search}%");
+                })->orWhereHas('user', function ($u) use ($search) {
+                    $u->where('name', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        return $query->paginate((int) ($filters['per_page'] ?? 20));
+    }
+}<?php
+// app/Services/Agent/AgentWizardService.php
+
+namespace App\Services\Agent;
+
+use App\Enums\Agent\AgentDocumentType;
+use App\Enums\Agent\AgentStatus;
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use App\Repositories\Contracts\Agent\AgentRepositoryInterface;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+
+class AgentWizardService
+{
+    public const MAX_FILE_SIZE_KB = 10240; // 10 MB
+    public const ALLOWED_MIMES = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
+
+    public function __construct(private AgentRepositoryInterface $agents) {}
+
+    public function getOrCreate(User $user): Agent
+    {
+        $agent = $this->agents->findByUser($user);
+        if ($agent) {
+            return $agent;
+        }
+
+        return $this->agents->createForUser($user);
+    }
+
+    public function assertEditable(Agent $agent): void
+    {
+        if (! $agent->status->isEditable()) {
+            throw new AccessDeniedHttpException('Application cannot be edited in its current state.');
+        }
+    }
+
+    public function saveAgency(Agent $agent, array $data): Agent
+    {
+        $this->assertEditable($agent);
+
+        return DB::transaction(function () use ($agent, $data) {
+            $this->upsertProfile($agent, [
+                'agency_name' => $data['agency_name'],
+                'agency_owner_name' => $data['agency_owner_name'],
+                'agency_phone' => $data['agency_phone'] ?? null,
+                'agency_country' => $data['agency_country'],
+                'agency_city' => $data['agency_city'],
+                'agency_address' => $data['agency_address'],
+            ]);
+
+            return $this->agents->update($agent, ['step_agency_saved' => true]);
+        });
+    }
+
+    public function saveBusiness(Agent $agent, array $data): Agent
+    {
+        $this->assertEditable($agent);
+        $this->assertStepSaved($agent, 'step_agency_saved', 'Agency information must be saved first.');
+
+        return DB::transaction(function () use ($agent, $data) {
+            $this->upsertProfile($agent, [
+                'business_description' => $data['business_description'],
+                'years_in_business' => (int) $data['years_in_business'],
+                'business_type' => $data['business_type'],
+                'registration_number' => $data['registration_number'] ?? null,
+                'website' => $data['website'] ?? null,
+                'social_media' => $data['social_media'] ?? null,
+                'languages' => $data['languages'] ?? null,
+                'specializations' => $data['specializations'] ?? null,
+            ]);
+
+            return $this->agents->update($agent, ['step_business_saved' => true]);
+        });
+    }
+
+    public function uploadDocuments(Agent $agent, array $files): Agent
+    {
+        $this->assertEditable($agent);
+        $this->assertStepSaved($agent, 'step_business_saved', 'Business information must be saved first.');
+
+        return DB::transaction(function () use ($agent, $files) {
+            foreach ($files as $type => $file) {
+                if (! $file instanceof UploadedFile) {
+                    continue;
+                }
+                $this->validateUpload($file);
+
+                // Replace any existing doc of the same type (unless locked)
+                $existing = $agent->documents()->where('type', $type)->first();
+                if ($existing) {
+                    if ($existing->locked_at) {
+                        throw new UnprocessableEntityHttpException('Approved documents cannot be replaced.');
+                    }
+                    Storage::disk('private')->delete($existing->file_path);
+                    $existing->delete();
+                }
+
+                $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs("agent-documents/{$agent->uuid}", $filename, 'private');
+
+                $agent->documents()->create([
+                    'uuid' => (string) Str::uuid(),
+                    'type' => $type,
+                    'original_name' => $file->getClientOriginalName(),
+                    'file_path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'size_bytes' => $file->getSize(),
+                ]);
+            }
+
+            $required = [
+                AgentDocumentType::BUSINESS_REGISTRATION->value,
+                AgentDocumentType::LICENSE->value,
+                AgentDocumentType::IDENTITY->value,
+            ];
+            $present = $agent->documents()->pluck('type')->map(fn ($t) => $t->value)->all();
+            $missing = array_diff($required, $present);
+            if (! empty($missing)) {
+                throw new UnprocessableEntityHttpException('Missing required documents: ' . implode(', ', $missing));
+            }
+
+            return $this->agents->update($agent, ['step_documents_saved' => true]);
+        });
+    }
+
+    public function saveHours(Agent $agent, array $hours): Agent
+    {
+        $this->assertEditable($agent);
+        $this->assertStepSaved($agent, 'step_documents_saved', 'Documents must be saved first.');
+
+        return DB::transaction(function () use ($agent, $hours) {
+            $agent->businessHours()->delete();
+            foreach ($hours as $row) {
+                $agent->businessHours()->create([
+                    'day_of_week' => (int) $row['day_of_week'],
+                    'is_closed' => (bool) ($row['is_closed'] ?? false),
+                    'open_time' => $row['open_time'] ?? null,
+                    'close_time' => $row['close_time'] ?? null,
+                ]);
+            }
+
+            return $this->agents->update($agent, ['step_hours_saved' => true]);
+        });
+    }
+
+    public function submit(Agent $agent): Agent
+    {
+        $this->assertEditable($agent);
+
+        $missing = [];
+        if (! $agent->step_agency_saved) $missing[] = 'agency information';
+        if (! $agent->step_business_saved) $missing[] = 'business information';
+        if (! $agent->step_documents_saved) $missing[] = 'documents';
+        if (! $agent->step_hours_saved) $missing[] = 'business hours';
+
+        if (! empty($missing)) {
+            throw new UnprocessableEntityHttpException('Cannot submit — incomplete: ' . implode(', ', $missing));
+        }
+
+        return DB::transaction(function () use ($agent) {
+            $attempt = $agent->attempt + 1;
+            $updated = $this->agents->update($agent, [
+                'status' => AgentStatus::PENDING_REVIEW->value,
+                'attempt' => $attempt,
+                'submitted_at' => now(),
+                'rejection_reason' => null,
+            ]);
+
+            $updated->submissionHistory()->create([
+                'uuid' => (string) Str::uuid(),
+                'attempt' => $attempt,
+                'action' => 'submitted',
+                'snapshot' => $this->snapshot($updated),
+            ]);
+
+            return $updated;
+        });
+    }
+
+    private function upsertProfile(Agent $agent, array $data): void
+    {
+        $profile = $agent->profile;
+        if ($profile) {
+            $profile->fill($data)->save();
+        } else {
+            $agent->profile()->create(array_merge([
+                'uuid' => (string) Str::uuid(),
+            ], $data));
+        }
+    }
+
+    private function assertStepSaved(Agent $agent, string $flag, string $message): void
+    {
+        if (! $agent->{$flag}) {
+            throw new UnprocessableEntityHttpException($message);
+        }
+    }
+
+    private function validateUpload(UploadedFile $file): void
+    {
+        if ($file->getSize() > self::MAX_FILE_SIZE_KB * 1024) {
+            throw new UnprocessableEntityHttpException('Each file must not exceed 10 MB.');
+        }
+        $ext = strtolower($file->getClientOriginalExtension());
+        if (! in_array($ext, self::ALLOWED_MIMES, true)) {
+            throw new UnprocessableEntityHttpException('Allowed formats: PDF, JPG, PNG, WEBP.');
+        }
+        $mime = $file->getMimeType();
+        if (! in_array($mime, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], true)) {
+            throw new UnprocessableEntityHttpException('Invalid file type.');
+        }
+    }
+
+    private function snapshot(Agent $agent): array
+    {
+        $agent->loadMissing(['profile', 'documents', 'businessHours']);
+        return [
+            'agency' => $agent->profile?->only([
+                'agency_name', 'agency_owner_name', 'agency_phone',
+                'agency_country', 'agency_city', 'agency_address',
+            ]),
+            'business' => $agent->profile?->only([
+                'business_description', 'years_in_business', 'business_type',
+                'registration_number', 'website', 'social_media',
+                'languages', 'specializations',
+            ]),
+            'documents' => $agent->documents->map(fn ($d) => [
+                'uuid' => $d->uuid,
+                'type' => $d->type->value,
+                'original_name' => $d->original_name,
+                'size_bytes' => $d->size_bytes,
+            ])->all(),
+            'hours' => $agent->businessHours->map(fn ($h) => [
+                'day_of_week' => $h->day_of_week,
+                'is_closed' => $h->is_closed,
+                'open_time' => $h->open_time,
+                'close_time' => $h->close_time,
+            ])->all(),
+        ];
+    }
+}<?php
+// app/Services/Agent/AgentReviewService.php
+
+namespace App\Services\Agent;
+
+use App\Enums\Agent\AgentStatus;
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use App\Repositories\Contracts\Agent\AgentRepositoryInterface;
+use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+
+class AgentReviewService
+{
+    // Temporary — remove when Finance module is built
+    public const INITIAL_CONNECTS_AWARD = 200;
+
+    public function __construct(
+        private AgentRepositoryInterface $agents,
+        private UserRepositoryInterface $users,
+    ) {}
+
+    public function markUnderReview(Agent $agent, User $admin): Agent
+    {
+        if ($agent->status !== AgentStatus::PENDING_REVIEW) {
+            throw new UnprocessableEntityHttpException('Only pending applications can be marked under review.');
+        }
+
+        return DB::transaction(function () use ($agent, $admin) {
+            $updated = $this->agents->update($agent, [
+                'status' => AgentStatus::UNDER_REVIEW->value,
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+            ]);
+
+            $updated->submissionHistory()->create([
+                'uuid' => (string) Str::uuid(),
+                'attempt' => $updated->attempt,
+                'action' => 'under_review',
+                'admin_id' => $admin->id,
+            ]);
+
+            return $updated;
+        });
+    }
+
+    public function approve(Agent $agent, User $admin): Agent
+    {
+        if (! in_array($agent->status, [AgentStatus::PENDING_REVIEW, AgentStatus::UNDER_REVIEW], true)) {
+            throw new UnprocessableEntityHttpException('Application cannot be approved in its current state.');
+        }
+
+        return DB::transaction(function () use ($agent, $admin) {
+            $updated = $this->agents->update($agent, [
+                'status' => AgentStatus::APPROVED->value,
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+                'approved_at' => now(),
+                'rejection_reason' => null,
+            ]);
+
+            // Assign Agent role
+            $owner = $updated->user;
+            $this->users->assignRole($owner, \App\Enums\Auth\UserRole::AGENT->value);
+
+            // Lock documents — becomes view-only for the agent
+            $updated->documents()->whereNull('locked_at')->update(['locked_at' => now()]);
+
+            // TEMPORARY: award 200 connects once on first approval.
+            // This entire block must be removed when Finance module ships.
+            if (! $updated->connects_awarded) {
+                $this->agents->update($updated, [
+                    'connects_balance' => $updated->connects_balance + self::INITIAL_CONNECTS_AWARD,
+                    'connects_awarded' => true,
+                ]);
+            }
+
+            $updated->submissionHistory()->create([
+                'uuid' => (string) Str::uuid(),
+                'attempt' => $updated->attempt,
+                'action' => 'approved',
+                'admin_id' => $admin->id,
+            ]);
+
+            return $updated->fresh();
+        });
+    }
+
+    public function reject(Agent $agent, User $admin, string $reason): Agent
+    {
+        if (! in_array($agent->status, [AgentStatus::PENDING_REVIEW, AgentStatus::UNDER_REVIEW], true)) {
+            throw new UnprocessableEntityHttpException('Application cannot be rejected in its current state.');
+        }
+
+        if (trim($reason) === '') {
+            throw new UnprocessableEntityHttpException('Rejection reason is required.');
+        }
+
+        return DB::transaction(function () use ($agent, $admin, $reason) {
+            $updated = $this->agents->update($agent, [
+                'status' => AgentStatus::REJECTED->value,
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+                'rejection_reason' => $reason,
+            ]);
+
+            $updated->submissionHistory()->create([
+                'uuid' => (string) Str::uuid(),
+                'attempt' => $updated->attempt,
+                'action' => 'rejected',
+                'reason' => $reason,
+                'admin_id' => $admin->id,
+            ]);
+
+            return $updated;
+        });
+    }
+}<?php
+// app/Services/Agent/AgentDocumentService.php
+
+namespace App\Services\Agent;
+
+use App\Models\Agent\AgentDocument;
+use App\Models\Auth\User;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+
+class AgentDocumentService
+{
+    public function stream(User $viewer, AgentDocument $document): StreamedResponse
+    {
+        $agent = $document->agent;
+        if (! $agent) {
+            throw new AccessDeniedHttpException('Document not found.');
+        }
+
+        $isOwner = $agent->user_id === $viewer->id;
+        $isAdmin = $viewer->hasRole('super_admin');
+
+        if (! $isOwner && ! $isAdmin) {
+            throw new AccessDeniedHttpException('Not authorized.');
+        }
+
+        $disk = Storage::disk('private');
+        if (! $disk->exists($document->file_path)) {
+            throw new AccessDeniedHttpException('Document not found.');
+        }
+
+        return $disk->response($document->file_path, $document->original_name, [
+            'Content-Type' => $document->mime_type,
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+}<?php
+// app/Http/Requests/Agent/SaveAgencyRequest.php
+
+namespace App\Http\Requests\Agent;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class SaveAgencyRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'agency_name' => ['required', 'string', 'min:2', 'max:120'],
+            'agency_owner_name' => ['required', 'string', 'min:2', 'max:120'],
+            'agency_phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^\+?[0-9\s\-\(\)]+$/'],
+            'agency_country' => ['required', 'string', 'max:80'],
+            'agency_city' => ['required', 'string', 'max:80'],
+            'agency_address' => ['required', 'string', 'max:255'],
+        ];
+    }
+}<?php
+// app/Http/Requests/Agent/SaveBusinessRequest.php
+
+namespace App\Http\Requests\Agent;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class SaveBusinessRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'business_description' => ['required', 'string', 'min:50', 'max:5000'],
+            'years_in_business' => ['required', 'integer', 'min:0', 'max:200'],
+            'business_type' => ['required', 'string', 'max:120'],
+            'registration_number' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'website' => ['sometimes', 'nullable', 'url', 'max:255'],
+            'social_media' => ['sometimes', 'nullable', 'array'],
+            'social_media.*' => ['string', 'max:255'],
+            'languages' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'languages.*' => ['string', 'max:60'],
+            'specializations' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'specializations.*' => ['string', 'max:120'],
+        ];
+    }
+}<?php
+// app/Http/Requests/Agent/UploadDocumentsRequest.php
+
+namespace App\Http\Requests\Agent;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class UploadDocumentsRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'business_registration' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'license' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'identity' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+            'other.*' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+        ];
+    }
+}<?php
+// app/Http/Requests/Agent/SaveHoursRequest.php
+
+namespace App\Http\Requests\Agent;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class SaveHoursRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'hours' => ['required', 'array', 'min:1', 'max:7'],
+            'hours.*.day_of_week' => ['required', 'integer', 'min:0', 'max:6'],
+            'hours.*.is_closed' => ['sometimes', 'boolean'],
+            'hours.*.open_time' => ['required_if:hours.*.is_closed,false', 'nullable', 'date_format:H:i'],
+            'hours.*.close_time' => ['required_if:hours.*.is_closed,false', 'nullable', 'date_format:H:i', 'after:hours.*.open_time'],
+        ];
+    }
+}<?php
+// app/Http/Requests/Agent/Admin/RejectAgentRequest.php
+
+namespace App\Http\Requests\Agent\Admin;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class RejectAgentRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user()?->hasRole('super_admin') ?? false;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'reason' => ['required', 'string', 'min:5', 'max:2000'],
+        ];
+    }
+}<?php
+// app/Http/Resources/Agent/AgentWizardResource.php
+
+namespace App\Http\Resources\Agent;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AgentWizardResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        $profile = $this->profile;
+
+        return [
+            'uuid' => $this->uuid,
+            'status' => $this->status?->value,
+            'attempt' => $this->attempt,
+            'submitted_at' => $this->submitted_at?->toIso8601String(),
+            'reviewed_at' => $this->reviewed_at?->toIso8601String(),
+            'rejection_reason' => $this->rejection_reason,
+            'approved_at' => $this->approved_at?->toIso8601String(),
+            'steps' => [
+                'agency' => (bool) $this->step_agency_saved,
+                'business' => (bool) $this->step_business_saved,
+                'documents' => (bool) $this->step_documents_saved,
+                'hours' => (bool) $this->step_hours_saved,
+            ],
+            'agency' => $profile ? [
+                'agency_name' => $profile->agency_name,
+                'agency_owner_name' => $profile->agency_owner_name,
+                'agency_phone' => $profile->agency_phone,
+                'agency_country' => $profile->agency_country,
+                'agency_city' => $profile->agency_city,
+                'agency_address' => $profile->agency_address,
+            ] : null,
+            'business' => $profile ? [
+                'business_description' => $profile->business_description,
+                'years_in_business' => $profile->years_in_business,
+                'business_type' => $profile->business_type,
+                'registration_number' => $profile->registration_number,
+                'website' => $profile->website,
+                'social_media' => $profile->social_media ?? [],
+                'languages' => $profile->languages ?? [],
+                'specializations' => $profile->specializations ?? [],
+            ] : null,
+            'documents' => AgentDocumentResource::collection($this->whenLoaded('documents')),
+            'business_hours' => AgentBusinessHourResource::collection($this->whenLoaded('businessHours')),
+            'connects_balance' => $this->connects_balance,
+            'can_edit' => $this->status?->isEditable() ?? false,
+            'can_submit' => $this->status?->isEditable()
+                && $this->step_agency_saved
+                && $this->step_business_saved
+                && $this->step_documents_saved
+                && $this->step_hours_saved,
+        ];
+    }
+}<?php
+// app/Http/Resources/Agent/AgentDocumentResource.php
+
+namespace App\Http\Resources\Agent;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AgentDocumentResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'uuid' => $this->uuid,
+            'type' => $this->type?->value,
+            'original_name' => $this->original_name,
+            'mime_type' => $this->mime_type,
+            'size_bytes' => $this->size_bytes,
+            'locked' => $this->locked_at !== null,
+            'download_url' => url("/api/agent/documents/{$this->uuid}"),
+            'uploaded_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+}<?php
+// app/Http/Resources/Agent/AgentBusinessHourResource.php
+
+namespace App\Http\Resources\Agent;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AgentBusinessHourResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'day_of_week' => $this->day_of_week,
+            'is_closed' => $this->is_closed,
+            'open_time' => $this->open_time,
+            'close_time' => $this->close_time,
+        ];
+    }
+}<?php
+// app/Http/Resources/Agent/Admin/AgentAdminListResource.php
+
+namespace App\Http\Resources\Agent\Admin;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AgentAdminListResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'uuid' => $this->uuid,
+            'agency' => $this->profile?->agency_name,
+            'owner' => $this->user?->name,
+            'owner_email' => $this->user?->email,
+            'attempt' => $this->attempt,
+            'status' => $this->status?->value,
+            'submitted_at' => $this->submitted_at?->toIso8601String(),
+        ];
+    }
+}<?php
+// app/Http/Resources/Agent/Admin/AgentAdminDetailResource.php
+
+namespace App\Http\Resources\Agent\Admin;
+
+use App\Http\Resources\Agent\AgentBusinessHourResource;
+use App\Http\Resources\Agent\AgentDocumentResource;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AgentAdminDetailResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        $profile = $this->profile;
+
+        return [
+            'uuid' => $this->uuid,
+            'status' => $this->status?->value,
+            'attempt' => $this->attempt,
+            'submitted_at' => $this->submitted_at?->toIso8601String(),
+            'reviewed_at' => $this->reviewed_at?->toIso8601String(),
+            'rejection_reason' => $this->rejection_reason,
+            'approved_at' => $this->approved_at?->toIso8601String(),
+            'user' => [
+                'uuid' => $this->user?->uuid,
+                'name' => $this->user?->name,
+                'username' => $this->user?->username,
+                'email' => $this->user?->email,
+            ],
+            'agency' => $profile ? [
+                'agency_name' => $profile->agency_name,
+                'agency_owner_name' => $profile->agency_owner_name,
+                'agency_phone' => $profile->agency_phone,
+                'agency_country' => $profile->agency_country,
+                'agency_city' => $profile->agency_city,
+                'agency_address' => $profile->agency_address,
+            ] : null,
+            'business' => $profile ? [
+                'business_description' => $profile->business_description,
+                'years_in_business' => $profile->years_in_business,
+                'business_type' => $profile->business_type,
+                'registration_number' => $profile->registration_number,
+                'website' => $profile->website,
+                'social_media' => $profile->social_media ?? [],
+                'languages' => $profile->languages ?? [],
+                'specializations' => $profile->specializations ?? [],
+            ] : null,
+            'documents' => AgentDocumentResource::collection($this->whenLoaded('documents')),
+            'business_hours' => AgentBusinessHourResource::collection($this->whenLoaded('businessHours')),
+            'history' => $this->whenLoaded('submissionHistory', fn () => $this->submissionHistory->map(fn ($h) => [
+                'attempt' => $h->attempt,
+                'action' => $h->action,
+                'reason' => $h->reason,
+                'created_at' => $h->created_at?->toIso8601String(),
+            ])->all()),
+        ];
+    }
+}<?php
+// app/Http/Controllers/Agent/AgentWizardController.php
+
+namespace App\Http\Controllers\Agent;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Agent\SaveAgencyRequest;
+use App\Http\Requests\Agent\SaveBusinessRequest;
+use App\Http\Requests\Agent\SaveHoursRequest;
+use App\Http\Requests\Agent\UploadDocumentsRequest;
+use App\Http\Resources\Agent\AgentWizardResource;
+use App\Services\Agent\AgentWizardService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class AgentWizardController extends Controller
+{
+    public function __construct(private AgentWizardService $service) {}
+
+    public function show(Request $request): JsonResponse
+    {
+        $agent = $this->service->getOrCreate($request->user())
+            ->load(['profile', 'documents', 'businessHours']);
+
+        return (new AgentWizardResource($agent))->response();
+    }
+
+    public function saveAgency(SaveAgencyRequest $request): JsonResponse
+    {
+        $agent = $this->service->getOrCreate($request->user());
+        $agent = $this->service->saveAgency($agent, $request->validated());
+
+        return (new AgentWizardResource($agent->load(['profile', 'documents', 'businessHours'])))->response();
+    }
+
+    public function saveBusiness(SaveBusinessRequest $request): JsonResponse
+    {
+        $agent = $this->service->getOrCreate($request->user());
+        $agent = $this->service->saveBusiness($agent, $request->validated());
+
+        return (new AgentWizardResource($agent->load(['profile', 'documents', 'businessHours'])))->response();
+    }
+
+    public function uploadDocuments(UploadDocumentsRequest $request): JsonResponse
+    {
+        $agent = $this->service->getOrCreate($request->user());
+
+        // Map request keys to document types
+        $files = [];
+        foreach (['business_registration', 'license', 'identity'] as $key) {
+            if ($request->hasFile($key)) {
+                $files[$key] = $request->file($key);
+            }
+        }
+
+        $agent = $this->service->uploadDocuments($agent, $files);
+
+        return (new AgentWizardResource($agent->load(['profile', 'documents', 'businessHours'])))->response();
+    }
+
+    public function saveHours(SaveHoursRequest $request): JsonResponse
+    {
+        $agent = $this->service->getOrCreate($request->user());
+        $agent = $this->service->saveHours($agent, $request->validated('hours'));
+
+        return (new AgentWizardResource($agent->load(['profile', 'documents', 'businessHours'])))->response();
+    }
+
+    public function submit(Request $request): JsonResponse
+    {
+        $agent = $this->service->getOrCreate($request->user());
+        $agent = $this->service->submit($agent);
+
+        return (new AgentWizardResource($agent->load(['profile', 'documents', 'businessHours'])))->response();
+    }
+}<?php
+// app/Http/Controllers/Agent/AgentDocumentController.php
+
+namespace App\Http\Controllers\Agent;
+
+use App\Http\Controllers\Controller;
+use App\Models\Agent\AgentDocument;
+use App\Services\Agent\AgentDocumentService;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class AgentDocumentController extends Controller
+{
+    public function __construct(private AgentDocumentService $service) {}
+
+    public function download(AgentDocument $document): StreamedResponse
+    {
+        return $this->service->stream(request()->user(), $document);
+    }
+}<?php
+// app/Http/Controllers/Agent/Admin/AdminAgentController.php
+
+namespace App\Http\Controllers\Agent\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Agent\Admin\RejectAgentRequest;
+use App\Http\Resources\Agent\Admin\AgentAdminDetailResource;
+use App\Http\Resources\Agent\Admin\AgentAdminListResource;
+use App\Models\Agent\Agent;
+use App\Repositories\Contracts\Agent\AgentRepositoryInterface;
+use App\Services\Agent\AgentReviewService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class AdminAgentController extends Controller
+{
+    public function __construct(
+        private AgentRepositoryInterface $agents,
+        private AgentReviewService $review,
+    ) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $paginator = $this->agents->paginateForAdmin($request->only(['status', 'search', 'per_page']));
+
+        return AgentAdminListResource::collection($paginator)->response();
+    }
+
+    public function show(string $uuid): JsonResponse
+    {
+        $agent = $this->agents->findByUuid($uuid);
+        abort_unless($agent, 404, 'Agent not found.');
+
+        $agent->load(['user', 'profile', 'documents', 'businessHours', 'submissionHistory']);
+
+        return (new AgentAdminDetailResource($agent))->response();
+    }
+
+    public function markUnderReview(string $uuid): JsonResponse
+    {
+        $agent = $this->agents->findByUuid($uuid);
+        abort_unless($agent, 404, 'Agent not found.');
+
+        $agent = $this->review->markUnderReview($agent, request()->user());
+
+        return (new AgentAdminDetailResource($agent->load(['user', 'profile', 'documents', 'businessHours', 'submissionHistory'])))->response();
+    }
+
+    public function approve(string $uuid): JsonResponse
+    {
+        $agent = $this->agents->findByUuid($uuid);
+        abort_unless($agent, 404, 'Agent not found.');
+
+        $agent = $this->review->approve($agent, request()->user());
+
+        return (new AgentAdminDetailResource($agent->load(['user', 'profile', 'documents', 'businessHours', 'submissionHistory'])))->response();
+    }
+
+    public function reject(RejectAgentRequest $request, string $uuid): JsonResponse
+    {
+        $agent = $this->agents->findByUuid($uuid);
+        abort_unless($agent, 404, 'Agent not found.');
+
+        $agent = $this->review->reject($agent, $request->user(), (string) $request->string('reason'));
+
+        return (new AgentAdminDetailResource($agent->load(['user', 'profile', 'documents', 'businessHours', 'submissionHistory'])))->response();
+    }
+}<?php
+// app/Http/Controllers/Agent/PublicAgentController.php
+
+namespace App\Http\Controllers\Agent;
+
+use App\Http\Controllers\Controller;
+use App\Repositories\Contracts\Agent\AgentRepositoryInterface;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class PublicAgentController extends Controller
+{
+    public function __construct(private AgentRepositoryInterface $agents) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $paginator = $this->agents->paginateApproved($request->only(['search', 'per_page']));
+
+        $data = $paginator->through(fn ($agent) => [
+            'uuid' => $agent->uuid,
+            'agency_name' => $agent->profile?->agency_name,
+            'country' => $agent->profile?->agency_country,
+            'city' => $agent->profile?->agency_city,
+            'approved_at' => $agent->approved_at?->toIso8601String(),
+        ]);
+
+        return response()->json($data);
+    }
+
+    public function show(string $uuid): JsonResponse
+    {
+        $agent = $this->agents->findByUuid($uuid);
+        abort_unless($agent && $agent->isApproved(), 404, 'Agent not found.');
+
+        $agent->load(['profile', 'businessHours']);
+
+        return response()->json([
+            'data' => [
+                'uuid' => $agent->uuid,
+                'agency_name' => $agent->profile?->agency_name,
+                'agency_owner_name' => $agent->profile?->agency_owner_name,
+                'agency_country' => $agent->profile?->agency_country,
+                'agency_city' => $agent->profile?->agency_city,
+                'agency_address' => $agent->profile?->agency_address,
+                'business_description' => $agent->profile?->business_description,
+                'years_in_business' => $agent->profile?->years_in_business,
+                'business_type' => $agent->profile?->business_type,
+                'website' => $agent->profile?->website,
+                'social_media' => $agent->profile?->social_media ?? [],
+                'languages' => $agent->profile?->languages ?? [],
+                'specializations' => $agent->profile?->specializations ?? [],
+                'business_hours' => $agent->businessHours->map(fn ($h) => [
+                    'day_of_week' => $h->day_of_week,
+                    'is_closed' => $h->is_closed,
+                    'open_time' => $h->open_time,
+                    'close_time' => $h->close_time,
+                ])->all(),
+                'approved_at' => $agent->approved_at?->toIso8601String(),
+            ],
+        ]);
+    }
+}<?php
+// routes/agent.php
+
+use App\Http\Controllers\Agent\Admin\AdminAgentController;
+use App\Http\Controllers\Agent\AgentDocumentController;
+use App\Http\Controllers\Agent\AgentWizardController;
+use App\Http\Controllers\Agent\PublicAgentController;
+use Illuminate\Support\Facades\Route;
+
+// Public
+Route::get('public', [PublicAgentController::class, 'index'])->middleware('throttle:agent-public');
+Route::get('public/{uuid}', [PublicAgentController::class, 'show'])->middleware('throttle:agent-public');
+
+// Authenticated (customer applying for agent)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('wizard', [AgentWizardController::class, 'show']);
+
+    Route::prefix('wizard')->middleware('throttle:agent-wizard')->group(function () {
+        Route::post('agency', [AgentWizardController::class, 'saveAgency']);
+        Route::post('business', [AgentWizardController::class, 'saveBusiness']);
+        Route::post('documents', [AgentWizardController::class, 'uploadDocuments']);
+        Route::post('hours', [AgentWizardController::class, 'saveHours']);
+        Route::post('submit', [AgentWizardController::class, 'submit']);
+    });
+
+    Route::get('documents/{document:uuid}', [AgentDocumentController::class, 'download']);
+});
+
+// Admin
+Route::middleware(['auth:sanctum', 'role:super_admin'])
+    ->prefix('admin')
+    ->group(function () {
+        Route::get('applications', [AdminAgentController::class, 'index']);
+        Route::get('applications/{uuid}', [AdminAgentController::class, 'show']);
+        Route::post('applications/{uuid}/under-review', [AdminAgentController::class, 'markUnderReview']);
+        Route::post('applications/{uuid}/approve', [AdminAgentController::class, 'approve']);
+        Route::post('applications/{uuid}/reject', [AdminAgentController::class, 'reject']);
+    });
+                Route::middleware('api')
+                ->prefix('api/agent')
+                ->group(base_path('routes/agent.php'));        RateLimiter::for('agent-public', fn (Request $r) => Limit::perMinute(120)->by($r->ip()));

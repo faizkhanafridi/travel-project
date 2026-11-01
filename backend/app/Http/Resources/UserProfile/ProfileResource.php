@@ -24,7 +24,8 @@ class ProfileResource extends JsonResource
             'country' => $this->country,
             'languages' => $this->languages ?? [],
             'member_since' => $this->user?->created_at?->toIso8601String(),
-            'account_status' => $this->user?->roles->pluck('name')->first(),
+            // 'account_status' => $this->user?->roles->pluck('name')->first(),
+            'account_status' => $this->user?->hasRole('agent') ? 'agent' : 'customer',
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Briefcase, Compass, Sparkles, User } from 'lucide-react';
+import { ArrowRight, Briefcase, Compass, Shield, Sparkles, User } from 'lucide-react';
 import Navbar from '../components/layout/Navbar';
 import { useAuthStore } from '../stores/authStore';
 
@@ -29,8 +29,7 @@ export default function HomePage() {
               Your travel journey starts here
             </h1>
             <p className="text-white/80 max-w-lg mb-6">
-              Authentication and profiles are live. Agents, services, marketplace,
-              and bookings will unlock as the platform grows.
+              Authentication, profiles, and agent onboarding are live.
             </p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 text-xs font-semibold">
@@ -39,8 +38,11 @@ export default function HomePage() {
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 text-xs font-semibold">
                 ✅ Module 02 — User Profiles
               </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 text-xs font-semibold">
+                ✅ Module 03 — Agent
+              </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-xs font-semibold text-white/70">
-                Module 03 — Coming Soon
+                Module 04 — Coming Soon
               </span>
             </div>
           </div>
@@ -54,16 +56,33 @@ export default function HomePage() {
             cta="Open my profile"
             to="/profile"
           />
-          {user?.is_customer && !user?.is_agent ? (
+          {user?.is_super_admin ? (
+            <Card
+              icon={Shield}
+              title="Admin: agent applications"
+              description="Review, approve, or reject pending agent applications."
+              cta="Open admin"
+              to="/admin/agents"
+              accent
+            />
+          ) : user?.is_customer && !user?.is_agent ? (
             <Card
               icon={Briefcase}
               title="Become an agent"
               description="Apply to sell travel services, receive custom requests, and earn with 98% payout."
               cta="Start application"
-              to="/become-agent"
+              to="/agent/apply"
               accent
             />
-          ) : (
+         ) : user?.is_agent ? (
+  <Card
+    icon={Briefcase}
+    title="Manage your agency"
+    description="Edit agency information, business details, and operating hours."
+    cta="Open account"
+    to="/agent/account"
+  />
+) : (
             <Card
               icon={Compass}
               title="Browse marketplace"

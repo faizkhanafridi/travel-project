@@ -63,5 +63,11 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('email-change-verify', function (Request $r) {
             return Limit::perMinutes(10, 10)->by($r->user()?->id ?? $r->ip());
         });
+
+
+
+        RateLimiter::for('agent-wizard', fn(Request $r) => Limit::perMinutes(10, 60)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('agent-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
     }
 }

@@ -25,6 +25,10 @@ return Application::configure(basePath: dirname(__DIR__))
                  Route::middleware('api')
                 ->prefix('api/user-profile')
                 ->group(base_path('routes/user-profile.php'));
+
+                Route::middleware('api')
+                ->prefix('api/agent')
+                ->group(base_path('routes/agent.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

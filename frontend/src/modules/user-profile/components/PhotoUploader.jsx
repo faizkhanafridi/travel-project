@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Loader2, Trash2 } from 'lucide-react';
 
 export default function PhotoUploader({
   currentUrl,
   onFileSelected,
+  onRemove,
   uploading = false,
   disabled = false,
 }) {
@@ -19,7 +20,14 @@ export default function PhotoUploader({
     onFileSelected(file);
   };
 
+  const handleRemove = () => {
+    if (disabled || uploading) return;
+    setPreview(null);
+    onRemove?.();
+  };
+
   const src = preview || currentUrl;
+  const canRemove = !!src;
 
   return (
     <div className="flex items-center gap-5">
@@ -39,15 +47,28 @@ export default function PhotoUploader({
       </div>
 
       <div>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={disabled || uploading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Camera className="w-4 h-4" />
-          Change photo
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={disabled || uploading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Camera className="w-4 h-4" />
+            Change photo
+          </button>
+          {canRemove && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={disabled || uploading}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-4 h-4" />
+              Remove
+            </button>
+          )}
+        </div>
         <p className="text-xs text-slate-400 mt-1.5">JPG, PNG, WEBP · max 5 MB</p>
         <input
           ref={inputRef}

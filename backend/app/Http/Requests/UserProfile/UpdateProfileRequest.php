@@ -29,6 +29,7 @@ class UpdateProfileRequest extends FormRequest
             'languages' => ['sometimes', 'nullable', 'array', 'max:20'],
             'languages.*' => ['string', 'max:60'],
             'photo' => ['sometimes', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'remove_photo' => ['sometimes', 'boolean'],
         ];
     }
 }

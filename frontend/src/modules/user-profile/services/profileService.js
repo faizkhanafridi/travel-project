@@ -2,15 +2,20 @@ import { api } from '../../../lib/api';
 
 export const profileService = {
   show: () => api.get('/user-profile/').then((r) => r.data),
-
   update: (formData) =>
     api
       .post('/user-profile/?_method=PATCH', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       .then((r) => r.data),
-
   publicShow: (uuid) => api.get(`/user-profile/public/${uuid}`).then((r) => r.data),
+
+  // Resolves the current user's approved agent UUID (null if not an agent).
+  myAgent: () =>
+    api
+      .get('/agent/account')
+      .then((r) => r.data)
+      .catch(() => ({ data: null })),
 
   emailStatus: () => api.get('/user-profile/email/status').then((r) => r.data),
   startEmailChange: (payload) =>

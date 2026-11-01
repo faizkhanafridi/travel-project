@@ -34,3 +34,12 @@ export function useEmailChangeStatus() {
     staleTime: 10_000,
   });
 }
+
+
+export function useMyAgent() {
+  return useQuery({
+    queryKey: ['agent', 'account'],
+    queryFn: profileService.myAgent,
+    staleTime: 60_000,
+  });
+}

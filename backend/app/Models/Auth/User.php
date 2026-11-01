@@ -40,6 +40,8 @@ class User extends Authenticatable
         'two_factor_recovery_codes',
     ];
 
+    protected string $guard_name = 'web';
+
     protected function casts(): array
     {
         return [
@@ -53,11 +55,10 @@ class User extends Authenticatable
         ];
     }
 
-        public function uniqueIds(): array
+    public function uniqueIds(): array
     {
         return ['uuid'];
     }
-
 
     public function getRouteKeyName(): string
     {

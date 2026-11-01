@@ -24,7 +24,8 @@ class UserRepository implements UserRepositoryInterface
 
     public function assignRole(User $user, string $role): void
     {
-        $user->syncRoles([$role]);
+        // $user->syncRoles([$role]);
+        $user->assignRole($role);
     }
 
     public function updatePassword(User $user, string $hashedPassword): void

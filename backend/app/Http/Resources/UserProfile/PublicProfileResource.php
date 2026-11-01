@@ -15,13 +15,17 @@ class PublicProfileResource extends JsonResource
             'name' => $this->user?->name,
             'username' => $this->user?->username,
             // 'display_name' => $this->display_name,
+            'agent_uuid' => $this->user?->agent?->status === \App\Enums\Agent\AgentStatus::APPROVED
+                ? $this->user->agent->uuid
+                : null,
             'photo_url' => $this->photo_path ? url("/api/user-profile/photo/{$this->uuid}") : null,
             'bio' => $this->bio,
             'city' => $this->city,
             'country' => $this->country,
             'languages' => $this->languages ?? [],
             'member_since' => $this->user?->created_at?->toIso8601String(),
-            'account_status' => $this->user?->roles->pluck('name')->first(),
+            // 'account_status' => $this->user?->roles->pluck('name')->first(),
+            'account_status' => $this->user?->hasRole('agent') ? 'agent' : 'customer',
         ];
     }
 }

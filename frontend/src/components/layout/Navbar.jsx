@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Plane, User, Briefcase, Settings } from 'lucide-react';
+import { ChevronDown, LogOut, Plane, User, Briefcase, Shield, Settings } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../modules/auth/services/authService';
 
@@ -51,7 +51,7 @@ export default function Navbar() {
           <div className="flex items-center gap-3">
             {user.is_customer && !user.is_agent && (
               <Link
-                to="/become-agent"
+                to="/agent/apply"
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-brand-700 hover:bg-brand-50"
               >
                 <Briefcase className="w-4 h-4" />
@@ -83,9 +83,14 @@ export default function Navbar() {
                   <MenuLink to="/profile" icon={User} onClick={() => setOpen(false)}>
                     My profile
                   </MenuLink>
-                  {user.is_agent && (
-                    <MenuLink to="/" icon={Briefcase} onClick={() => setOpen(false)}>
-                      Agent Dashboard
+                {user.is_agent && (
+  <MenuLink to="/agent/account" icon={Briefcase} onClick={() => setOpen(false)}>
+    My agency
+  </MenuLink>
+)}
+                  {user.is_super_admin && (
+                    <MenuLink to="/admin/agents" icon={Shield} onClick={() => setOpen(false)}>
+                      Admin · Agents
                     </MenuLink>
                   )}
                   <MenuLink to="/profile" icon={Settings} onClick={() => setOpen(false)}>

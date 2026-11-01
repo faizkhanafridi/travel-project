@@ -10,6 +10,7 @@ use App\Http\Resources\UserProfile\PublicProfileResource;
 use App\Services\UserProfile\ProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
@@ -27,16 +28,22 @@ class ProfileController extends Controller
         return (new ProfileResource($profile->load('user.roles')))->response();
     }
 
-    public function update(UpdateProfileRequest $request): JsonResponse
-    {
-        $profile = $this->service->upsert(
-            $request->user(),
-            $request->safe()->except(['photo']),
-            $request->file('photo'),
-        );
+ public function update(UpdateProfileRequest $request): JsonResponse
+{
+    Log::info('profile.update payload', [
+        'has_file' => $request->hasFile('photo'),
+        'remove_photo_raw' => $request->input('remove_photo'),
+        'validated' => $request->validated(),
+    ]);
 
-        return (new ProfileResource($profile->load('user.roles')))->response();
-    }
+    $profile = $this->service->upsert(
+        $request->user(),
+        $request->safe()->except(['photo']),
+        $request->file('photo'),
+    );
+
+    return (new ProfileResource($profile->load('user.roles')))->response();
+}
 
     public function publicShow(string $uuid): JsonResponse
     {

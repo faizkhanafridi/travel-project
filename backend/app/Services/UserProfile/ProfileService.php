@@ -26,43 +26,56 @@ class ProfileService
         return $this->profiles->findByUuid($uuid);
     }
 
-        public function upsert(User $user, array $data, ?UploadedFile $photo): Profile
-    {
-        return DB::transaction(function () use ($user, $data, $photo) {
-            // users.username — canonical handle, must remain unique
-            if (! empty($data['username'])) {
-                if ($this->profiles->usernameExists($data['username'], $user->id)) {
-                    throw new UnprocessableEntityHttpException('Username is already taken.');
-                }
-                $user->forceFill(['username' => $data['username']])->save();
+   public function upsert(User $user, array $data, ?UploadedFile $photo): Profile
+{
+    return DB::transaction(function () use ($user, $data, $photo) {
+        if (! empty($data['username'])) {
+            if ($this->profiles->usernameExists($data['username'], $user->id)) {
+                throw new UnprocessableEntityHttpException('Username is already taken.');
             }
+            $user->forceFill(['username' => $data['username']])->save();
+        }
 
-            // users.name — canonical display name (works for social-login users too)
-            if (! empty($data['name'])) {
-                $user->forceFill(['name' => $data['name']])->save();
+        if (! empty($data['name'])) {
+            $user->forceFill(['name' => $data['name']])->save();
+        }
+
+        $profile = $this->profiles->findByUser($user);
+
+        // --- REMOVE PHOTO (must run BEFORE upload) ---
+        $removePhoto = (bool) ($data['remove_photo'] ?? false);
+        unset($data['remove_photo']);
+
+        if ($removePhoto && ! $photo && $profile?->photo_path) {
+            Storage::disk('private')->delete($profile->photo_path);
+            $data['photo_path'] = null;
+        }
+
+        // --- UPLOAD (wins over removal if both were sent) ---
+        if ($photo) {
+            $path = $this->storePhoto($user, $photo);
+            $data['photo_path'] = $path;
+            if ($profile?->photo_path && $profile->photo_path !== $path) {
+                Storage::disk('private')->delete($profile->photo_path);
             }
+        }
 
-            $profile = $this->profiles->findByUser($user);
+        $profileData = $data;
+        unset($profileData['username'], $profileData['name']);
 
-            if ($photo) {
-                $path = $this->storePhoto($user, $photo);
-                $data['photo_path'] = $path;
-                if ($profile?->photo_path && $profile->photo_path !== $path) {
-                    Storage::disk('private')->delete($profile->photo_path);
-                }
-            }
+        if (! empty($data['name'])) {
+            $profileData['display_name'] = $data['name'];
+        } elseif (empty($profileData['display_name'])) {
+            $profileData['display_name'] = $user->fresh()->name;
+        }
 
-            // Strip user-level fields — they do not belong on the profile row
-            $profileData = $data;
-            unset($profileData['username'], $profileData['name']);
+        if ($profile) {
+            return $this->profiles->update($profile, $profileData);
+        }
 
-            if ($profile) {
-                return $this->profiles->update($profile, $profileData);
-            }
-
-            return $this->profiles->createForUser($user, $profileData);
-        });
-    }
+        return $this->profiles->createForUser($user, $profileData);
+    });
+}
 
     private function storePhoto(User $user, UploadedFile $photo): string
     {

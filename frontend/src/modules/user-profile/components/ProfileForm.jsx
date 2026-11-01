@@ -10,6 +10,7 @@ import { extractErrors, firstGeneral } from '../../../lib/errors';
 const emptyForm = {
   name: '',
   username: '',
+  display_name: '',
   bio: '',
   phone: '',
   date_of_birth: '',
@@ -24,6 +25,7 @@ function toForm(profile) {
   return {
     name: profile.name || '',
     username: profile.username || '',
+    display_name: profile.display_name || '',
     bio: profile.bio || '',
     phone: profile.phone || '',
     date_of_birth: profile.date_of_birth ? profile.date_of_birth.slice(0, 10) : '',
@@ -38,6 +40,7 @@ export default function ProfileForm({ initialProfile, onSave, saving }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(() => toForm(initialProfile));
   const [photo, setPhoto] = useState(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
@@ -73,6 +76,7 @@ export default function ProfileForm({ initialProfile, onSave, saving }) {
   const cancelEdit = () => {
     setEditing(false);
     setPhoto(null);
+    setRemovePhoto(false);
     setErrors({});
     setBanner(null);
     setForm(toForm(initialProfile));
@@ -101,13 +105,15 @@ export default function ProfileForm({ initialProfile, onSave, saving }) {
         fd.append(k, v);
       }
     });
-    if (photo) fd.append('photo', photo);
+   if (photo) fd.append('photo', photo);
+if (removePhoto && !photo) fd.append('remove_photo', '1');
 
     try {
       await onSave(fd);
       setSavedAt(new Date());
       setEditing(false);
       setPhoto(null);
+      setRemovePhoto(false);
     } catch (err) {
       const errs = extractErrors(err);
       setErrors(errs);
@@ -152,13 +158,20 @@ export default function ProfileForm({ initialProfile, onSave, saving }) {
       </div>
 
       <PhotoUploader
-        currentUrl={initialProfile?.photo_url}
-        onFileSelected={(f) => editing && setPhoto(f)}
+        currentUrl={removePhoto ? null : initialProfile?.photo_url}
+        onFileSelected={(f) => {
+          if (!editing) return;
+          setRemovePhoto(false);
+          setPhoto(f);
+        }}
+        onRemove={() => {
+          setPhoto(null);
+          setRemovePhoto(true);
+        }}
         uploading={saving}
         disabled={disabled}
       />
-
-      <div className="grid sm:grid-cols-2 gap-4">
+     <div className="grid sm:grid-cols-2 gap-4">
         <ProfileField label="Display name" error={errors.name}>
           <input
             type="text"

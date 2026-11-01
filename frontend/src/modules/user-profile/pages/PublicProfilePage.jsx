@@ -1,8 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
-import { MapPin, Globe, Calendar, ArrowLeft } from 'lucide-react';
+import { MapPin, Globe, Calendar, ArrowLeft, Briefcase } from 'lucide-react';
 import Navbar from '../../../components/layout/Navbar';
 import { usePublicProfile } from '../hooks/useProfile';
 
+// Customer-facing public profile.
+// Backend already strips email / phone / docs — we only render safe fields.
 export default function PublicProfilePage() {
   const { uuid } = useParams();
   const { data, isLoading, error } = usePublicProfile(uuid);
@@ -37,6 +39,8 @@ export default function PublicProfilePage() {
     );
   }
 
+  const isAgent = profile.account_status === 'agent';
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -47,7 +51,7 @@ export default function PublicProfilePage() {
               {profile.photo_url ? (
                 <img
                   src={profile.photo_url}
-                  alt={profile.display_name}    
+                  alt={profile.display_name}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -80,15 +84,28 @@ export default function PublicProfilePage() {
                     })}
                   </span>
                 )}
-                {profile.account_status && (
-                  <span className="inline-flex items-center gap-1 capitalize">
-                    <Globe className="w-3.5 h-3.5" />
-                    {profile.account_status.replace('_', ' ')}
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1 capitalize">
+                  <Globe className="w-3.5 h-3.5" />
+                  {String(profile.account_status || '').replace('_', ' ')}
+                </span>
               </div>
             </div>
           </div>
+
+          {isAgent && profile.agent_uuid && (
+            <div className="mt-5 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-brand-900">
+                This user operates a travel agency on Travel Marketplace.
+              </p>
+              <Link
+                to={`/agency/${profile.agent_uuid}`}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 shrink-0"
+              >
+                <Briefcase className="w-4 h-4" />
+                View agency
+              </Link>
+            </div>
+          )}
 
           {profile.bio && (
             <div className="mt-6 pt-6 border-t border-slate-100">
