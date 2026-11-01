@@ -21,35 +21,47 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('auth-login', function (Request $request) {
             $key = strtolower($request->input('email', '') . '|' . $request->ip());
             return Limit::perMinute(5)->by($key)
-                ->response(fn () => response()->json(['message' => 'Too many attempts. Try again shortly.'], 429));
+                ->response(fn() => response()->json(['message' => 'Too many attempts. Try again shortly.'], 429));
         });
 
-        RateLimiter::for('auth-register', fn (Request $r) => Limit::perHour(5)->by($r->ip()));
+        RateLimiter::for('auth-register', fn(Request $r) => Limit::perHour(5)->by($r->ip()));
 
         RateLimiter::for('auth-verify', function (Request $r) {
             return Limit::perMinutes(10, 5)->by(strtolower($r->input('email', '')) . '|' . $r->ip());
         });
 
-        RateLimiter::for('auth-resend', fn (Request $r) => Limit::perMinutes(5, 3)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
+        RateLimiter::for('auth-resend', fn(Request $r) => Limit::perMinutes(5, 3)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
 
-        RateLimiter::for('auth-forgot', fn (Request $r) => Limit::perHour(82)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
+        RateLimiter::for('auth-forgot', fn(Request $r) => Limit::perHour(82)->by(strtolower($r->input('email', '')) . '|' . $r->ip()));
 
         RateLimiter::for('auth-reset', function (Request $r) {
             return Limit::perMinutes(10, 5)->by(strtolower($r->input('email', '')) . '|' . $r->ip());
         });
 
-        RateLimiter::for('auth-social', fn (Request $r) => Limit::perHour(10)->by($r->ip()));
+        RateLimiter::for('auth-social', fn(Request $r) => Limit::perHour(10)->by($r->ip()));
 
-        RateLimiter::for('auth-logout', fn (Request $r) => Limit::perMinute(10)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('auth-logout', fn(Request $r) => Limit::perMinute(10)->by($r->user()?->id ?? $r->ip()));
 
-        RateLimiter::for('auth-change-password', fn (Request $r) => Limit::perMinutes(10, 5)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('auth-change-password', fn(Request $r) => Limit::perMinutes(10, 5)->by($r->user()?->id ?? $r->ip()));
 
-        RateLimiter::for('auth-onboarding', fn (Request $r) => Limit::perHour(20)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('auth-onboarding', fn(Request $r) => Limit::perHour(20)->by($r->user()?->id ?? $r->ip()));
 
-        RateLimiter::for('auth-mfa-setup', fn (Request $r) => Limit::perMinutes(10, 5)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('auth-mfa-setup', fn(Request $r) => Limit::perMinutes(10, 5)->by($r->user()?->id ?? $r->ip()));
 
         RateLimiter::for('auth-mfa-verify', function (Request $r) {
             return Limit::perMinutes(10, 5)->by(session('2fa:user_id') ?? $r->ip());
+        });
+
+
+
+
+        // User Profle Rate limits
+        RateLimiter::for('profile-update', fn(Request $r) => Limit::perMinutes(10, 30)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('email-change-start', fn(Request $r) => Limit::perHour(5)->by($r->user()?->id ?? $r->ip()));
+
+        RateLimiter::for('email-change-verify', function (Request $r) {
+            return Limit::perMinutes(10, 10)->by($r->user()?->id ?? $r->ip());
         });
     }
 }

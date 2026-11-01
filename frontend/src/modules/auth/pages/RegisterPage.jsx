@@ -68,7 +68,7 @@ export default function RegisterPage() {
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         {banner && <Alert variant="error">{banner}</Alert>}
 
-        <Field label="Full name" error={errors.name}>
+        <Field label="Display name" error={errors.name}>
           <input
             type="text"
             autoComplete="name"

@@ -31,16 +31,23 @@ export function ensureCsrf() {
 // Before every mutating request: ensure CSRF cookie is present.
 api.interceptors.request.use(async (config) => {
   const method = (config.method || 'get').toLowerCase();
+
+  // Let the browser set the correct Content-Type for FormData (with boundary).
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  } else if (!config.headers['Content-Type']) {
+    config.headers['Content-Type'] = 'application/json';
+  }
+
   if (['post', 'put', 'patch', 'delete'].includes(method)) {
     try {
       await ensureCsrf();
     } catch {
-      // don't block the request; backend will still validate
+      // backend will still validate; don't block
     }
   }
   return config;
 });
-
 // Retry once on 419 (expired CSRF), then reject.
 api.interceptors.response.use(
   (res) => res,

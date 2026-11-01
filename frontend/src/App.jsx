@@ -16,7 +16,6 @@ import { authService } from './modules/auth/services/authService';
 
 import HomePage from './pages/HomePage';
 import BecomeAgentPlaceholder from './pages/BecomeAgentPlaceholder';
-import ProfileSetupPlaceholder from './pages/ProfileSetupPlaceholder';
 import NotFoundPage from './pages/NotFoundPage';
 
 import RegisterPage from './modules/auth/pages/RegisterPage';
@@ -29,6 +28,9 @@ import MfaChallengePage from './modules/auth/pages/MfaChallengePage';
 import OnboardingPage from './modules/auth/pages/OnboardingPage';
 import SocialSuccessPage from './modules/auth/pages/SocialSuccessPage';
 import SocialErrorPage from './modules/auth/pages/SocialErrorPage';
+import EmailChangeConfirmPage from './modules/user-profile/pages/EmailChangeConfirmPage';
+import PublicProfilePage from './modules/user-profile/pages/PublicProfilePage';
+import MyProfilePage from './modules/user-profile/pages/MyProfilePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -108,7 +110,7 @@ export default function App() {
           />
 
           {/* Authenticated routes */}
-          <Route
+           <Route
             path="/onboarding"
             element={
               <OnboardingRoute>
@@ -127,10 +129,37 @@ export default function App() {
           />
 
           <Route
-            path="/profile-setup"
+            path="/profile"
             element={
               <ProtectedRoute>
-                <ProfileSetupPlaceholder />
+                <MyProfilePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/u/:uuid"
+            element={
+             
+                <PublicProfilePage />
+           
+            }
+          />
+
+          <Route
+            path="/account/email/confirm-current"
+            element={
+              <ProtectedRoute>
+                <EmailChangeConfirmPage stage="CURRENT_EMAIL_VERIFY" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/account/email/confirm-new"
+            element={
+              <ProtectedRoute>
+                <EmailChangeConfirmPage stage="NEW_EMAIL_VERIFY" />
               </ProtectedRoute>
             }
           />

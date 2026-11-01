@@ -22,7 +22,7 @@ export default function Navbar() {
     try {
       await authService.logout();
     } catch {
-      // session may already be gone
+      // ignore
     }
     clearUser();
     navigate('/login', { replace: true });
@@ -80,15 +80,15 @@ export default function Navbar() {
                     <p className="text-sm font-semibold text-slate-900 truncate">{user.name}</p>
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
                   </div>
-                  <MenuLink to="/profile-setup" icon={User} onClick={() => setOpen(false)}>
-                    Profile
+                  <MenuLink to="/profile" icon={User} onClick={() => setOpen(false)}>
+                    My profile
                   </MenuLink>
                   {user.is_agent && (
                     <MenuLink to="/" icon={Briefcase} onClick={() => setOpen(false)}>
                       Agent Dashboard
                     </MenuLink>
                   )}
-                  <MenuLink to="/profile-setup" icon={Settings} onClick={() => setOpen(false)}>
+                  <MenuLink to="/profile" icon={Settings} onClick={() => setOpen(false)}>
                     Settings
                   </MenuLink>
                   <button

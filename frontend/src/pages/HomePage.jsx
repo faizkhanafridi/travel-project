@@ -29,15 +29,18 @@ export default function HomePage() {
               Your travel journey starts here
             </h1>
             <p className="text-white/80 max-w-lg mb-6">
-              Authentication is live. Agents, services, marketplace, and bookings
-              will unlock as the platform grows.
+              Authentication and profiles are live. Agents, services, marketplace,
+              and bookings will unlock as the platform grows.
             </p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 text-xs font-semibold">
                 ✅ Module 01 — Authentication
               </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 text-xs font-semibold">
+                ✅ Module 02 — User Profiles
+              </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-xs font-semibold text-white/70">
-                Module 02 — Coming Soon
+                Module 03 — Coming Soon
               </span>
             </div>
           </div>
@@ -48,8 +51,8 @@ export default function HomePage() {
             icon={User}
             title="Complete your profile"
             description="Add your photo, bio, and preferences to personalize your account."
-            cta="Set up profile"
-            to="/profile-setup"
+            cta="Open my profile"
+            to="/profile"
           />
           {user?.is_customer && !user?.is_agent ? (
             <Card
