@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, X } from 'lucide-react';
-import Navbar from '../../../../components/layout/Navbar';
-import Alert from '../../../../components/ui/Alert';
-import Button from '../../../../components/ui/Button';
-import FullPageLoader from '../../../../components/ui/FullPageLoader';
-import DocumentLink from '../../components/DocumentLink';
-import { useAdminAgent, useAdminAgentAction } from '../../hooks/useAgent';
-import { rejectReasonSchema } from '../../schemas';
-import { extractErrors, firstGeneral } from '../../../../lib/errors';
-import { DAYS } from '../../components/HoursEditor';
+import { useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { ArrowLeft, X } from "lucide-react";
+import Navbar from "../../../../components/layout/Navbar";
+import Alert from "../../../../components/ui/Alert";
+import Button from "../../../../components/ui/Button";
+import FullPageLoader from "../../../../components/ui/FullPageLoader";
+import DocumentLink from "../../components/DocumentLink";
+import { useAdminAgent, useAdminAgentAction } from "../../hooks/useAgent";
+import { rejectReasonSchema } from "../../schemas";
+import { extractErrors, firstGeneral } from "../../../../lib/errors";
+import { DAYS } from "../../components/HoursEditor";
 
 export default function AdminAgentReviewPage() {
   const { uuid } = useParams();
@@ -17,7 +17,7 @@ export default function AdminAgentReviewPage() {
   const action = useAdminAgentAction();
 
   const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
+  const [rejectReason, setRejectReason] = useState("");
   const [rejectErr, setRejectErr] = useState(null);
   const [banner, setBanner] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
@@ -50,7 +50,7 @@ export default function AdminAgentReviewPage() {
     );
   }
 
-  const canDecide = ['PENDING_REVIEW', 'UNDER_REVIEW'].includes(agent.status);
+  const canDecide = ["PENDING_REVIEW", "UNDER_REVIEW"].includes(agent.status);
 
   const runAction = async (type, reason) => {
     setBanner(null);
@@ -59,7 +59,7 @@ export default function AdminAgentReviewPage() {
       await action.mutateAsync({ action: type, uuid: agent.uuid, reason });
       await refetch();
       setRejectOpen(false);
-      setRejectReason('');
+      setRejectReason("");
     } catch (err) {
       const errs = extractErrors(err);
       setBanner(firstGeneral(errs));
@@ -76,7 +76,7 @@ export default function AdminAgentReviewPage() {
       setRejectErr(parsed.error.issues[0].message);
       return;
     }
-    await runAction('reject', parsed.data.reason);
+    await runAction("reject", parsed.data.reason);
   };
 
   return (
@@ -93,18 +93,28 @@ export default function AdminAgentReviewPage() {
         <div className="mt-4 mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900">
-              {agent.agency?.agency_name || 'Agent application'}
+              {agent.agency?.agency_name || "Agent application"}
             </h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Attempt #{agent.attempt} · Submitted{' '}
+              Attempt #{agent.attempt} · Submitted{" "}
               {agent.submitted_at
                 ? new Date(agent.submitted_at).toLocaleString()
-                : '—'}
+                : "—"}
             </p>
           </div>
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-slate-50 text-slate-700 border-slate-200">
-            {String(agent.status).replace('_', ' ')}
-          </span>
+          <div>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold bg-slate-50 text-slate-700 border-slate-200">
+              {String(agent.status).replace("_", " ")}
+            </span>
+            {agent.status === "APPROVED" && (
+              <Link
+                to={`/agency/${agent.uuid}`}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-brand-700 hover:bg-brand-50"
+              >
+                View public profile
+              </Link>
+            )}
+          </div>
         </div>
 
         {banner && <Alert variant="error">{banner}</Alert>}
@@ -114,17 +124,19 @@ export default function AdminAgentReviewPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => runAction('under_review')}
-              loading={pendingAction === 'under_review'}
-              disabled={pendingAction !== null && pendingAction !== 'under_review'}
+              onClick={() => runAction("under_review")}
+              loading={pendingAction === "under_review"}
+              disabled={
+                pendingAction !== null && pendingAction !== "under_review"
+              }
             >
               Mark under review
             </Button>
             <Button
               type="button"
-              onClick={() => runAction('approve')}
-              loading={pendingAction === 'approve'}
-              disabled={pendingAction !== null && pendingAction !== 'approve'}
+              onClick={() => runAction("approve")}
+              loading={pendingAction === "approve"}
+              disabled={pendingAction !== null && pendingAction !== "approve"}
             >
               Approve
             </Button>
@@ -161,21 +173,27 @@ export default function AdminAgentReviewPage() {
               value={agent.business?.business_description}
               multiline
             />
-            <Row label="Years in business" value={agent.business?.years_in_business} />
+            <Row
+              label="Years in business"
+              value={agent.business?.years_in_business}
+            />
             <Row label="Type" value={agent.business?.business_type} />
-            <Row label="Registration #" value={agent.business?.registration_number} />
+            <Row
+              label="Registration #"
+              value={agent.business?.registration_number}
+            />
             <Row label="Website" value={agent.business?.website} />
             <Row
               label="Social media"
-              value={(agent.business?.social_media || []).join(', ')}
+              value={(agent.business?.social_media || []).join(", ")}
             />
             <Row
               label="Languages"
-              value={(agent.business?.languages || []).join(', ')}
+              value={(agent.business?.languages || []).join(", ")}
             />
             <Row
               label="Specializations"
-              value={(agent.business?.specializations || []).join(', ')}
+              value={(agent.business?.specializations || []).join(", ")}
             />
           </Section>
 
@@ -211,11 +229,11 @@ export default function AdminAgentReviewPage() {
                         </span>
                         <span
                           className={
-                            h.is_closed ? 'text-slate-400' : 'text-slate-800'
+                            h.is_closed ? "text-slate-400" : "text-slate-800"
                           }
                         >
                           {h.is_closed
-                            ? 'Closed'
+                            ? "Closed"
                             : `${h.open_time} – ${h.close_time}`}
                         </span>
                       </div>
@@ -236,13 +254,13 @@ export default function AdminAgentReviewPage() {
                     <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5" />
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-slate-900 capitalize">
-                        Attempt #{h.attempt} ·{' '}
-                        {String(h.action).replace('_', ' ')}
+                        Attempt #{h.attempt} ·{" "}
+                        {String(h.action).replace("_", " ")}
                       </p>
                       <p className="text-xs text-slate-500">
                         {h.created_at
                           ? new Date(h.created_at).toLocaleString()
-                          : '—'}
+                          : "—"}
                       </p>
                       {h.reason && (
                         <p className="text-xs text-rose-700 mt-1 whitespace-pre-line">
@@ -269,7 +287,7 @@ export default function AdminAgentReviewPage() {
                 onClick={() => {
                   setRejectOpen(false);
                   setRejectErr(null);
-                  setRejectReason('');
+                  setRejectReason("");
                 }}
                 className="text-slate-400 hover:text-slate-600"
                 aria-label="Close"
@@ -292,8 +310,8 @@ export default function AdminAgentReviewPage() {
                   placeholder="Example: please re-upload a valid business license."
                   className={`w-full rounded-xl border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-4 ${
                     rejectErr
-                      ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-100'
-                      : 'border-slate-200 focus:border-brand-500 focus:ring-brand-100'
+                      ? "border-rose-300 focus:border-rose-500 focus:ring-rose-100"
+                      : "border-slate-200 focus:border-brand-500 focus:ring-brand-100"
                   }`}
                 />
                 <div className="flex items-center justify-between mt-1">
@@ -314,7 +332,7 @@ export default function AdminAgentReviewPage() {
                   onClick={() => {
                     setRejectOpen(false);
                     setRejectErr(null);
-                    setRejectReason('');
+                    setRejectReason("");
                   }}
                 >
                   Cancel
@@ -322,7 +340,7 @@ export default function AdminAgentReviewPage() {
                 <Button
                   type="submit"
                   variant="danger"
-                  loading={pendingAction === 'reject'}
+                  loading={pendingAction === "reject"}
                 >
                   Reject
                 </Button>
@@ -345,15 +363,15 @@ function Section({ title, children }) {
 }
 
 function Row({ label, value, multiline }) {
-  if (value === null || value === undefined || value === '') return null;
+  if (value === null || value === undefined || value === "") return null;
   return (
-    <div className={multiline ? '' : 'flex items-center gap-3'}>
+    <div className={multiline ? "" : "flex items-center gap-3"}>
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
         {label}
       </p>
       <p
         className={`text-sm text-slate-800 ${
-          multiline ? 'mt-1 whitespace-pre-line' : ''
+          multiline ? "mt-1 whitespace-pre-line" : ""
         }`}
       >
         {value}

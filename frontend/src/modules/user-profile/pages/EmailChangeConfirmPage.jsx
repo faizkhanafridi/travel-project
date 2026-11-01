@@ -5,6 +5,7 @@ import Navbar from '../../../components/layout/Navbar';
 import OtpInput from '../../auth/components/OtpInput';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
+import FullPageLoader from '../../../components/ui/FullPageLoader';
 import { profileService } from '../services/profileService';
 import { useAuthStore } from '../../../stores/authStore';
 import { emailCodeSchema } from '../schemas';
@@ -18,7 +19,9 @@ export default function EmailChangeConfirmPage({ stage: stageProp }) {
 
   const stage =
     stageProp ||
-    (window.location.pathname.includes('confirm-new') ? 'NEW_EMAIL_VERIFY' : 'CURRENT_EMAIL_VERIFY');
+    (window.location.pathname.includes('confirm-new')
+      ? 'NEW_EMAIL_VERIFY'
+      : 'CURRENT_EMAIL_VERIFY');
 
   const emailParam = search.get('email') || '';
   const codeParam = search.get('code') || '';
@@ -28,16 +31,40 @@ export default function EmailChangeConfirmPage({ stage: stageProp }) {
   const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [guardState, setGuardState] = useState('checking'); // checking | ok | blocked
   const autoSubmitted = useRef(false);
 
+  // Verify that an active email change exists AND the current stage matches.
   useEffect(() => {
-    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      if (!user) return; // handled below
+      try {
+        const res = await profileService.emailStatus();
+        const active = res?.data;
+        if (cancelled) return;
+        if (!active || active.stage !== stage) {
+          setGuardState('blocked');
+        } else {
+          setGuardState('ok');
+        }
+      } catch {
+        if (!cancelled) setGuardState('blocked');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, stage]);
+
+  useEffect(() => {
+    if (guardState !== 'ok') return;
     if (emailParam && codeParam && !autoSubmitted.current) {
       autoSubmitted.current = true;
       submit(emailParam, codeParam);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [guardState]);
 
   const submit = async (_email, _code) => {
     setErrors({});
@@ -53,7 +80,9 @@ export default function EmailChangeConfirmPage({ stage: stageProp }) {
       if (stage === 'CURRENT_EMAIL_VERIFY') {
         await profileService.verifyCurrentEmail(parsed.data);
         setSuccessMsg(
-          `Current email confirmed. A verification code was sent to ${emailParam || 'your new email'}.`
+          `Current email confirmed. A verification code was sent to ${
+            emailParam || 'your new email'
+          }.`
         );
         setTimeout(() => navigate('/profile'), 1200);
       } else {
@@ -95,13 +124,44 @@ export default function EmailChangeConfirmPage({ stage: stageProp }) {
     );
   }
 
+  if (guardState === 'checking') {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Navbar />
+        <FullPageLoader label="Checking your request…" />
+      </div>
+    );
+  }
+
+  if (guardState === 'blocked') {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Navbar />
+        <div className="max-w-md mx-auto px-4 py-16 text-center space-y-4">
+          <Alert variant="error">
+            This email change link is invalid or has expired. Start a new email
+            change from your profile.
+          </Alert>
+          <Link
+            to="/profile"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to profile
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <main className="max-w-md mx-auto px-4 sm:px-6 py-10">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
           <h1 className="text-xl font-extrabold text-slate-900 mb-1">
-            {stage === 'CURRENT_EMAIL_VERIFY' ? 'Confirm current email' : 'Verify new email'}
+            {stage === 'CURRENT_EMAIL_VERIFY'
+              ? 'Confirm current email'
+              : 'Verify new email'}
           </h1>
           <p className="text-sm text-slate-500 mb-6">
             {stage === 'CURRENT_EMAIL_VERIFY'
@@ -120,7 +180,12 @@ export default function EmailChangeConfirmPage({ stage: stageProp }) {
                 disabled={loading}
                 error={errors.code?.[0] || errors.code}
               />
-              <Button type="submit" loading={loading} size="lg" className="w-full">
+              <Button
+                type="submit"
+                loading={loading}
+                size="lg"
+                className="w-full"
+              >
                 {stage === 'CURRENT_EMAIL_VERIFY' ? 'Verify current' : 'Verify new'}
               </Button>
             </form>

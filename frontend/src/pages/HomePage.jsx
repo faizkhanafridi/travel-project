@@ -12,7 +12,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-cyan-900 text-white p-8 sm:p-12 relative overflow-hidden">
+        <div className="rounded-3xl bg-brand-700 text-white p-8 sm:p-12 relative overflow-hidden">
           <div
             className="absolute inset-0 opacity-20"
             style={{

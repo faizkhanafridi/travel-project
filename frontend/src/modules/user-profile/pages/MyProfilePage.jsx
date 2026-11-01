@@ -13,6 +13,7 @@ import {
   useMyAgent,
 } from "../hooks/useProfile";
 import { useAuthStore } from "../../../stores/authStore";
+import SecurityCard from "../components/SecurityCard";
 
 export default function MyProfilePage() {
   const navigate = useNavigate();
@@ -119,6 +120,7 @@ export default function MyProfilePage() {
             </button>
           </div>
         </div>
+        <SecurityCard />
 
         {/* Profile form */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5">

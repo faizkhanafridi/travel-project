@@ -52,3 +52,30 @@ export const mfaVerifySchema = z.object({ code });
 export const chooseRoleSchema = z.object({
   choice: z.enum(['customer', 'agent']),
 });
+
+
+
+export const changePasswordSchema = z
+  .object({
+    current_password: z.string().min(1, 'Current password is required'),
+    password: strongPassword,
+    password_confirmation: z.string().min(1, 'Confirm your password'),
+  })
+  .refine((v) => v.password === v.password_confirmation, {
+    path: ['password_confirmation'],
+    message: 'Passwords do not match',
+  })
+  .refine((v) => v.password !== v.current_password, {
+    path: ['password'],
+    message: 'New password must be different from current password',
+  });
+
+export const setPasswordSchemaLoggedIn = z
+  .object({
+    password: strongPassword,
+    password_confirmation: z.string().min(1, 'Confirm your password'),
+  })
+  .refine((v) => v.password === v.password_confirmation, {
+    path: ['password_confirmation'],
+    message: 'Passwords do not match',
+  });

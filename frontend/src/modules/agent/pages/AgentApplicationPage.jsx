@@ -1,21 +1,25 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import Navbar from '../../../components/layout/Navbar';
-import Alert from '../../../components/ui/Alert';
-import FullPageLoader from '../../../components/ui/FullPageLoader';
-import WizardStepper from '../components/WizardStepper';
-import AgentStatusBanner from '../components/AgentStatusBanner';
-import StepAgency from '../components/StepAgency';
-import StepBusiness from '../components/StepBusiness';
-import StepDocuments from '../components/StepDocuments';
-import StepHours from '../components/StepHours';
-import StepReview from '../components/StepReview';
-import { useAgentWizard } from '../hooks/useAgent';
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import Navbar from "../../../components/layout/Navbar";
+import Alert from "../../../components/ui/Alert";
+import FullPageLoader from "../../../components/ui/FullPageLoader";
+import WizardStepper from "../components/WizardStepper";
+import AgentStatusBanner from "../components/AgentStatusBanner";
+import StepAgency from "../components/StepAgency";
+import StepBusiness from "../components/StepBusiness";
+import StepDocuments from "../components/StepDocuments";
+import StepHours from "../components/StepHours";
+import StepReview from "../components/StepReview";
+import { useAgentWizard } from "../hooks/useAgent";
+import { Navigate } from "react-router-dom";
+import { useAuthStore } from "../../../stores/authStore";
 
-const STEP_ORDER = ['agency', 'business', 'documents', 'hours', 'review'];
+const STEP_ORDER = ["agency", "business", "documents", "hours", "review"];
 
 export default function AgentApplicationPage() {
+  const user = useAuthStore((s) => s.user);
+  if (user?.is_super_admin) return <Navigate to="/admin/agents" replace />;
   const { data, isLoading, error, refetch } = useAgentWizard();
   const [step, setStep] = useState(0);
 
@@ -25,7 +29,7 @@ export default function AgentApplicationPage() {
 
   useEffect(() => {
     if (!agent) return;
-    if (status === 'DRAFT' || status === 'REJECTED') {
+    if (status === "DRAFT" || status === "REJECTED") {
       const firstUnsaved = STEP_ORDER.findIndex((k) => !steps[k]);
       if (firstUnsaved >= 0) setStep(firstUnsaved);
       else setStep(STEP_ORDER.length - 1);
@@ -53,12 +57,14 @@ export default function AgentApplicationPage() {
   }
 
   // Approved agents go to the account editor, not the wizard.
-  if (status === 'APPROVED') {
-    window.location.replace('/agent/account');
+  if (status === "APPROVED") {
+    window.location.replace("/agent/account");
     return null;
   }
 
-  const isLocked = ['PENDING_REVIEW', 'UNDER_REVIEW', 'SUSPENDED'].includes(status);
+  const isLocked = ["PENDING_REVIEW", "UNDER_REVIEW", "SUSPENDED"].includes(
+    status,
+  );
   const stepKey = STEP_ORDER[step];
 
   const handleSaved = async () => {
@@ -103,29 +109,33 @@ export default function AgentApplicationPage() {
 
         {isLocked ? (
           <Alert variant="info">
-            Your application is locked while under review. You will be notified once a
-            decision is made.
+            Your application is locked while under review. You will be notified
+            once a decision is made.
           </Alert>
         ) : (
           <>
             <div className="mb-6">
-              <WizardStepper current={step} savedFlags={steps} onNavigate={setStep} />
+              <WizardStepper
+                current={step}
+                savedFlags={steps}
+                onNavigate={setStep}
+              />
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-              {stepKey === 'agency' && (
+              {stepKey === "agency" && (
                 <StepAgency agent={agent} onSaved={handleSaved} />
               )}
-              {stepKey === 'business' && (
+              {stepKey === "business" && (
                 <StepBusiness agent={agent} onSaved={handleSaved} />
               )}
-              {stepKey === 'documents' && (
+              {stepKey === "documents" && (
                 <StepDocuments agent={agent} onSaved={handleSaved} />
               )}
-              {stepKey === 'hours' && (
+              {stepKey === "hours" && (
                 <StepHours agent={agent} onSaved={handleSaved} />
               )}
-              {stepKey === 'review' && (
+              {stepKey === "review" && (
                 <StepReview agent={agent} onSubmitted={refetch} />
               )}
             </div>
