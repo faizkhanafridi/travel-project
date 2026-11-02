@@ -1,17 +1,27 @@
-import { useParams, Link, Navigate } from 'react-router-dom';
+import { useParams, Link, Navigate } from "react-router-dom";
 import {
-  ArrowLeft, MapPin, Clock, CheckCircle2, Tag, CalendarDays,
-} from 'lucide-react';
-import Navbar from '../../../components/layout/Navbar';
-import FullPageLoader from '../../../components/ui/FullPageLoader';
-import Alert from '../../../components/ui/Alert';
-import { usePublicService } from '../hooks/useService';
+  ArrowLeft,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  Tag,
+  CalendarDays,
+} from "lucide-react";
+import Navbar from "../../../components/layout/Navbar";
+import FullPageLoader from "../../../components/ui/FullPageLoader";
+import Alert from "../../../components/ui/Alert";
+import { usePublicService } from "../hooks/useService";
+import { useAuthStore } from "../../../stores/authStore";
 
 export default function ServiceDetailPage() {
   const { uuid } = useParams();
   const { data, isLoading, error } = usePublicService(uuid);
   const s = data?.data;
-
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = !!user?.is_super_admin;
+  const isOwnerAgent =
+    !!user?.is_agent && !!s?.agent && user?.agent_uuid === s.agent.uuid;
+    console.log(isOwnerAgent)
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -59,7 +69,11 @@ export default function ServiceDetailPage() {
           <div className="lg:col-span-2 space-y-5">
             <div className="rounded-2xl overflow-hidden bg-slate-100 aspect-[16/10]">
               {cover ? (
-                <img src={cover.url} alt={s.title} className="w-full h-full object-cover" />
+                <img
+                  src={cover.url}
+                  alt={s.title}
+                  className="w-full h-full object-cover"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-slate-400">
                   No image
@@ -74,14 +88,20 @@ export default function ServiceDetailPage() {
                     key={img.uuid}
                     className="rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100"
                   >
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={img.url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 ))}
               </div>
             )}
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6">
-              <h1 className="text-2xl font-extrabold text-slate-900">{s.title}</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900">
+                {s.title}
+              </h1>
               {s.agent && (
                 <Link
                   to={`/agency/${s.agent.uuid}`}
@@ -104,7 +124,7 @@ export default function ServiceDetailPage() {
                   <span className="inline-flex items-center gap-1">
                     <Tag className="w-3.5 h-3.5" />
                     {s.category.name}
-                    {s.subcategory ? ` · ${s.subcategory.name}` : ''}
+                    {s.subcategory ? ` · ${s.subcategory.name}` : ""}
                   </span>
                 )}
               </div>
@@ -135,10 +155,15 @@ export default function ServiceDetailPage() {
 
               {s.inclusions?.length > 0 && (
                 <div className="mt-6 pt-6 border-t border-slate-100">
-                  <h2 className="text-sm font-semibold text-slate-900 mb-2">What's included</h2>
+                  <h2 className="text-sm font-semibold text-slate-900 mb-2">
+                    What's included
+                  </h2>
                   <ul className="space-y-1.5">
                     {s.inclusions.map((i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                      <li
+                        key={i}
+                        className="flex items-start gap-2 text-sm text-slate-700"
+                      >
                         <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                         {i}
                       </li>
@@ -157,7 +182,9 @@ export default function ServiceDetailPage() {
                       <li key={r.uuid} className="text-sm text-slate-700">
                         <p className="font-semibold">{r.title}</p>
                         {r.description && (
-                          <p className="text-xs text-slate-500">{r.description}</p>
+                          <p className="text-xs text-slate-500">
+                            {r.description}
+                          </p>
                         )}
                       </li>
                     ))}
@@ -181,28 +208,48 @@ export default function ServiceDetailPage() {
           <div className="lg:col-span-1">
             <div className="sticky top-24 rounded-2xl border border-slate-200 bg-white p-5">
               <p className="text-xs text-slate-500">Starting at</p>
-              <p className="text-3xl font-extrabold text-slate-900 mt-0.5">{priceText}</p>
+              <p className="text-3xl font-extrabold text-slate-900 mt-0.5">
+                {priceText}
+              </p>
               <p className="text-xs text-slate-400 mt-1">
                 Base currency USD · final price may vary by extras
               </p>
 
-              <button
-                type="button"
-                className="mt-4 w-full rounded-xl bg-brand-600 text-white py-3 font-semibold hover:bg-brand-700"
-              >
-                Book this service
-              </button>
-              <p className="text-xs text-slate-400 mt-2 text-center">
-                Payment coming soon (Module 10 — Finance)
-              </p>
-
-              {s.agent && (
+              {isAdmin ? (
                 <Link
-                  to={`/agency/${s.agent.uuid}`}
-                  className="mt-4 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  to={`/admin/services/${s.uuid}`}
+                  className="mt-4 w-full inline-flex justify-center items-center gap-2 rounded-xl bg-slate-900 text-white py-3 font-semibold hover:bg-slate-800"
                 >
-                  Contact agency
+                  Review in admin
                 </Link>
+              ) : isOwnerAgent ? (
+                <Link
+                  to={`/services/mine/${s.uuid}`}
+                  className="mt-4 w-full inline-flex justify-center items-center gap-2 rounded-xl bg-brand-600 text-white py-3 font-semibold hover:bg-brand-700"
+                >
+                  Edit this service
+                </Link>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="mt-4 w-full rounded-xl bg-brand-600 text-white py-3 font-semibold hover:bg-brand-700"
+                  >
+                    Book this service
+                  </button>
+                  <p className="text-xs text-slate-400 mt-2 text-center">
+                    Payment coming soon (Module 10 — Finance)
+                  </p>
+
+                  {s.agent && (
+                    <Link
+                      to={`/agency/${s.agent.uuid}`}
+                      className="mt-4 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Contact agency
+                    </Link>
+                  )}
+                </>
               )}
             </div>
           </div>

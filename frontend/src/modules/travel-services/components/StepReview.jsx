@@ -5,6 +5,7 @@ import Alert from '../../../components/ui/Alert';
 import { extractErrors, firstGeneral } from '../../../lib/errors';
 import { useSubmitService } from '../hooks/useService';
 import { useCategories } from '../hooks/useService';
+import { useCurrencyConverter } from '../hooks/useService';
 
 export default function StepReview({ service, onSubmitted }) {
   const [banner, setBanner] = useState(null);
@@ -29,6 +30,7 @@ const subcategory = category?.subcategories?.find(
       setBanner(firstGeneral(errs));
     }
   };
+const { format } = useCurrencyConverter();
 
   return (
     <div className="space-y-6">
@@ -74,7 +76,9 @@ const subcategory = category?.subcategories?.find(
 
       <Section title="Details">
         <Row label="Full description" value={service.full_description} multiline />
-        <Row label="Price" value={`USD ${Number(service.price).toLocaleString()}`} />
+        {/* <Row label="Price" value={`USD ${Number(service.price).toLocaleString()}`} /> */}
+        <Row label="Price" value={format(service.price)} />
+
         <Row label="Destination" value={`${service.destination_city}, ${service.destination_country}`} />
         <Row label="Duration" value={`${service.duration} ${service.duration_unit}`} />
         <Row label="Inclusions" value={(service.inclusions || []).join(', ')} />

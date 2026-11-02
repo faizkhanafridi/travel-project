@@ -3,6 +3,7 @@
 
 namespace App\Http\Resources\Auth;
 
+use App\Enums\Agent\AgentStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,6 +13,9 @@ class AuthUserResource extends JsonResource
     {
         return [
             'uuid' => $this->uuid,
+            'agent_uuid' => $this->agent?->status === AgentStatus::APPROVED
+                ? $this->agent->uuid
+                : null,
             'name' => $this->name,
             'username' => $this->username,
             'email' => $this->email,

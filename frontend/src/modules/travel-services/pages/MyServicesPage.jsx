@@ -1,37 +1,49 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
-  Plus, Search, MoreVertical, Pencil, Trash2, Send, Eye, FileWarning,
-} from 'lucide-react';
-import Navbar from '../../../components/layout/Navbar';
-import Alert from '../../../components/ui/Alert';
-import Button from '../../../components/ui/Button';
-import FullPageLoader from '../../../components/ui/FullPageLoader';
-import { useMyServices, useCreateService, useDestroyService, useRequestRepublish } from '../hooks/useService';
-import { serviceService } from '../services/serviceService';
-import { republishSchema } from '../schemas';
-import { extractErrors, firstGeneral } from '../../../lib/errors';
-
+  Plus,
+  Search,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Send,
+  Eye,
+  FileWarning,
+} from "lucide-react";
+import Navbar from "../../../components/layout/Navbar";
+import Alert from "../../../components/ui/Alert";
+import Button from "../../../components/ui/Button";
+import FullPageLoader from "../../../components/ui/FullPageLoader";
+import {
+  useMyServices,
+  useCreateService,
+  useDestroyService,
+  useRequestRepublish,
+} from "../hooks/useService";
+import { serviceService } from "../services/serviceService";
+import { republishSchema } from "../schemas";
+import { extractErrors, firstGeneral } from "../../../lib/errors";
+import { useCurrencyConverter } from '../hooks/useService';
 const STATUSES = [
-  { value: '', label: 'All' },
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'PENDING_REVIEW', label: 'Pending' },
-  { value: 'PUBLISHED', label: 'Published' },
-  { value: 'REJECTED', label: 'Rejected' },
-  { value: 'UNPUBLISHED', label: 'Unpublished' },
+  { value: "", label: "All" },
+  { value: "DRAFT", label: "Draft" },
+  { value: "PENDING_REVIEW", label: "Pending" },
+  { value: "PUBLISHED", label: "Published" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "UNPUBLISHED", label: "Unpublished" },
 ];
 
 export default function MyServicesPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
-  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState("");
+  const [search, setSearch] = useState("");
   const params = { status, search };
   const { data, isLoading, error } = useMyServices(params);
   const create = useCreateService();
   const destroy = useDestroyService();
   const [actionError, setActionError] = useState(null);
   const [republishOpen, setRepublishOpen] = useState(null);
-  const [republishReason, setRepublishReason] = useState('');
+  const [republishReason, setRepublishReason] = useState("");
   const [republishErr, setRepublishErr] = useState(null);
 
   const items = data?.data || [];
@@ -50,7 +62,7 @@ export default function MyServicesPage() {
   };
 
   const handleDelete = async (uuid) => {
-    if (!window.confirm('Delete this service? This cannot be undone.')) return;
+    if (!window.confirm("Delete this service? This cannot be undone.")) return;
     setActionError(null);
     try {
       await destroy.mutateAsync(uuid);
@@ -69,23 +81,28 @@ export default function MyServicesPage() {
       return;
     }
     try {
-      await serviceService.requestRepublish(republishOpen.uuid, parsed.data.reason);
+      await serviceService.requestRepublish(
+        republishOpen.uuid,
+        parsed.data.reason,
+      );
       setRepublishOpen(null);
-      setRepublishReason('');
+      setRepublishReason("");
       window.location.reload();
     } catch (err) {
       const errs = extractErrors(err);
       setRepublishErr(firstGeneral(errs));
     }
   };
-
+const { format } = useCurrencyConverter();
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-extrabold text-slate-900">My services</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900">
+              My services
+            </h1>
             <p className="text-slate-500 text-sm mt-1">
               Create and manage your travel services.
             </p>
@@ -113,12 +130,12 @@ export default function MyServicesPage() {
           <div className="flex gap-2 overflow-x-auto no-scrollbar">
             {STATUSES.map((f) => (
               <button
-                key={f.value || 'all'}
+                key={f.value || "all"}
                 onClick={() => setStatus(f.value)}
                 className={`px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap ${
                   status === f.value
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                    ? "bg-brand-600 text-white"
+                    : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
                 }`}
               >
                 {f.label}
@@ -133,7 +150,7 @@ export default function MyServicesPage() {
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
             <p className="text-slate-500 mb-4">
               {search || status
-                ? 'No services match your filters.'
+                ? "No services match your filters."
                 : "You haven't created any services yet."}
             </p>
             {!search && !status && (
@@ -166,20 +183,20 @@ export default function MyServicesPage() {
                 <div className="p-4 flex flex-col flex-1">
                   <div className="flex items-center justify-between mb-1">
                     <StatusBadge status={s.status} />
-                    <p className="text-sm font-extrabold text-slate-900">
-                      USD {Number(s.price).toLocaleString()}
-                    </p>
+               <p className="text-sm font-extrabold text-slate-900">
+  {format(s.price)}
+</p>
                   </div>
                   <h3 className="font-semibold text-slate-900 line-clamp-2 mt-1">
                     {s.title}
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
                     {s.category}
-                    {s.subcategory ? ` · ${s.subcategory}` : ''}
+                    {s.subcategory ? ` · ${s.subcategory}` : ""}
                   </p>
 
                   <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
-                    {['DRAFT', 'REJECTED'].includes(s.status) && (
+                    {["DRAFT", "REJECTED"].includes(s.status) && (
                       <Link
                         to={`/services/mine/${s.uuid}`}
                         className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
@@ -188,16 +205,25 @@ export default function MyServicesPage() {
                         Edit
                       </Link>
                     )}
-                    {s.status === 'PUBLISHED' && (
-                      <Link
-                        to={`/services/${s.uuid}`}
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View
-                      </Link>
+                    {s.status === "PUBLISHED" && (
+                      <>
+                        <Link
+                          to={`/services/${s.uuid}`}
+                          className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View
+                        </Link>
+                        <Link
+                          to={`/services/mine/${s.uuid}`}
+                          className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
+                        >
+                          <Pencil className="w-4 h-4" />
+                          Edit
+                        </Link>
+                      </>
                     )}
-                    {s.status === 'UNPUBLISHED' && (
+                    {s.status === "UNPUBLISHED" && (
                       <button
                         onClick={() => setRepublishOpen(s)}
                         className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
@@ -206,7 +232,7 @@ export default function MyServicesPage() {
                         Request republish
                       </button>
                     )}
-                    {s.status !== 'SUSPENDED' && (
+                    {s.status !== "SUSPENDED" && (
                       <button
                         onClick={() => handleDelete(s.uuid)}
                         className="inline-flex items-center gap-1 text-sm font-semibold text-rose-600 hover:text-rose-700 ml-auto"
@@ -232,9 +258,12 @@ export default function MyServicesPage() {
       {republishOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-5">
-            <h2 className="text-lg font-bold text-slate-900 mb-1">Request republish</h2>
+            <h2 className="text-lg font-bold text-slate-900 mb-1">
+              Request republish
+            </h2>
             <p className="text-sm text-slate-500 mb-4">
-              Explain why this service should be brought back. An admin will review.
+              Explain why this service should be brought back. An admin will
+              review.
             </p>
             <form onSubmit={submitRepublish} className="space-y-3">
               <textarea
@@ -244,8 +273,8 @@ export default function MyServicesPage() {
                 placeholder="Explain why this service should be republished…"
                 className={`w-full rounded-xl border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-4 ${
                   republishErr
-                    ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-100'
-                    : 'border-slate-200 focus:border-brand-500 focus:ring-brand-100'
+                    ? "border-rose-300 focus:border-rose-500 focus:ring-rose-100"
+                    : "border-slate-200 focus:border-brand-500 focus:ring-brand-100"
                 }`}
               />
               {republishErr && (
@@ -257,7 +286,7 @@ export default function MyServicesPage() {
                   variant="secondary"
                   onClick={() => {
                     setRepublishOpen(null);
-                    setRepublishReason('');
+                    setRepublishReason("");
                     setRepublishErr(null);
                   }}
                 >
@@ -275,19 +304,19 @@ export default function MyServicesPage() {
 
 function StatusBadge({ status }) {
   const map = {
-    DRAFT: 'bg-slate-100 text-slate-700 border-slate-200',
-    PENDING_REVIEW: 'bg-amber-50 text-amber-700 border-amber-200',
-    UNDER_REVIEW: 'bg-sky-50 text-sky-700 border-sky-200',
-    PUBLISHED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    REJECTED: 'bg-rose-50 text-rose-700 border-rose-200',
-    UNPUBLISHED: 'bg-amber-50 text-amber-700 border-amber-200',
-    SUSPENDED: 'bg-rose-50 text-rose-700 border-rose-200',
+    DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
+    PENDING_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
+    UNDER_REVIEW: "bg-sky-50 text-sky-700 border-sky-200",
+    PUBLISHED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    REJECTED: "bg-rose-50 text-rose-700 border-rose-200",
+    UNPUBLISHED: "bg-amber-50 text-amber-700 border-amber-200",
+    SUSPENDED: "bg-rose-50 text-rose-700 border-rose-200",
   };
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold ${map[status] || map.DRAFT}`}
     >
-      {String(status || '').replace('_', ' ')}
+      {String(status || "").replace("_", " ")}
     </span>
   );
 }

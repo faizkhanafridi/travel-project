@@ -5,6 +5,7 @@ namespace App\Models\Auth;
 
 use App\Enums\Auth\OnboardingChoice;
 use App\Enums\Auth\UserStatus;
+use App\Models\Agent\Agent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -53,6 +54,12 @@ class User extends Authenticatable
             'two_factor_secret' => 'encrypted',
         ];
     }
+
+    public function agent(): \Illuminate\Database\Eloquent\Relations\HasOne
+{
+    return $this->hasOne(Agent::class);
+}
+
 
     public function uniqueIds(): array
     {

@@ -40,6 +40,12 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::middleware('api')
                 ->prefix('api/services')
                 ->group(base_path('routes/travel-service.php'));
+
+
+            // Module 05
+            Route::middleware('api')
+                ->prefix('api/marketplace')
+                ->group(base_path('routes/marketplace.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

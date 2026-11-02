@@ -46,5 +46,11 @@ class RepositoryServiceProvider extends ServiceProvider
             TravelServiceRepositoryInterface::class,
             TravelServiceRepository::class,
         );
+
+        // Module 05
+        $this->app->bind(
+            \App\Repositories\Contracts\Marketplace\MarketplaceRepositoryInterface::class,
+            \App\Repositories\Eloquent\Marketplace\MarketplaceRepository::class,
+        );
     }
 }

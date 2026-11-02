@@ -8,16 +8,18 @@ const STEPS = [
   { key: 'review', label: 'Review' },
 ];
 
-export default function ServiceWizardStepper({ current, savedFlags = {}, onNavigate }) {
+export default function ServiceWizardStepper({ current, savedFlags = {}, onNavigate, hideReview = false }) {
+  const steps = hideReview ? STEPS.filter((s) => s.key !== 'review') : STEPS;
+
   return (
     <ol className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar">
-      {STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const isDone = savedFlags[step.key];
         const isCurrent = current === idx;
         const clickable = idx <= Math.max(
-          STEPS.findIndex((s) => !savedFlags[s.key]) === -1
-            ? STEPS.length - 1
-            : STEPS.findIndex((s) => !savedFlags[s.key]),
+          steps.findIndex((s) => !savedFlags[s.key]) === -1
+            ? steps.length - 1
+            : steps.findIndex((s) => !savedFlags[s.key]),
           0
         );
 
@@ -48,7 +50,7 @@ export default function ServiceWizardStepper({ current, savedFlags = {}, onNavig
               </span>
               <span className="hidden sm:inline">{step.label}</span>
             </button>
-            {idx < STEPS.length - 1 && <div className="w-4 h-px bg-slate-200" />}
+            {idx < steps.length - 1 && <div className="w-4 h-px bg-slate-200" />}
           </li>
         );
       })}

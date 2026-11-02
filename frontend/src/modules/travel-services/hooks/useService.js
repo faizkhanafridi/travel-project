@@ -148,3 +148,25 @@ export function useAdminServiceAction(uuid) {
     },
   });
 }
+
+
+export function useCurrencyConverter() {
+  const currency = useCurrencyStore((s) => s.currency);
+  const { data } = useCurrencyRates();
+  const rates = data?.rates || {};
+
+  const convert = (usdAmount) => {
+    if (!usdAmount && usdAmount !== 0) return 0;
+    if (currency === 'USD') return Number(usdAmount);
+    const rate = Number(rates[currency] || 1);
+    return Math.round(Number(usdAmount) * rate * 100) / 100;
+  };
+
+  const format = (usdAmount) =>
+    `${currency} ${convert(usdAmount).toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+
+  return { currency, convert, format };
+}

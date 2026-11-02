@@ -13,10 +13,15 @@ enum TravelServiceStatus: string
     case UNPUBLISHED = 'UNPUBLISHED';
     case SUSPENDED = 'SUSPENDED';
 
-    public function isEditable(): bool
-    {
-        return in_array($this, [self::DRAFT, self::REJECTED], true);
-    }
+  public function isEditable(): bool
+{
+    return in_array($this, [
+        self::DRAFT,
+        self::REJECTED,
+        self::PUBLISHED,
+        self::UNPUBLISHED,
+    ], true);
+}
 
     public function isAgentVisible(): bool
     {

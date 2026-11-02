@@ -1,21 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
-import Navbar from '../../../components/layout/Navbar';
-import Alert from '../../../components/ui/Alert';
-import FullPageLoader from '../../../components/ui/FullPageLoader';
-import ServiceCard from '../components/ServiceCard';
-import { useNavigation, usePublicServices } from '../hooks/useService';
-
-const SORTS = [
-  { value: 'recommended', label: 'Recommended' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'price_asc', label: 'Lowest price' },
-  { value: 'price_desc', label: 'Highest price' },
-  { value: 'best_rated', label: 'Best rated', disabled: true },
-  { value: 'most_reviewed', label: 'Most reviewed', disabled: true },
-  { value: 'most_booked', label: 'Most booked', disabled: true },
-];
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Search, SlidersHorizontal, X } from "lucide-react";
+import Navbar from "../../../components/layout/Navbar";
+import Alert from "../../../components/ui/Alert";
+import FullPageLoader from "../../../components/ui/FullPageLoader";
+import ServiceCard from "../../travel-services/components/ServiceCard";
+import {
+  useMarketplaceFilters,
+  useMarketplaceSearch,
+} from "../hooks/useMarketplace";
 
 function useDebounced(value, delay = 400) {
   const [v, setV] = useState(value);
@@ -28,42 +21,77 @@ function useDebounced(value, delay = 400) {
 
 export default function MarketplacePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: navData } = useNavigation();
-  const subcategories = navData?.data || [];
+  const { data: filterRes } = useMarketplaceFilters();
+  const options = filterRes?.data || filterRes || {};
+  const subcategories = options.subcategories || [];
+  const countries = options.countries || [];
+  const cities = options.cities || [];
+  const durationUnits = options.duration_units || [];
+  const priceRange = options.price_range || { min: 0, max: 0, currency: "USD" };
+  const sortOptions = options.sort_options || {};
+  const unavailableSorts = options.unavailable_sort_options || {};
+  const unavailableFilters = options.unavailable_filters || {};
 
-  const initialSub = searchParams.get('subcategory') || '';
-  const initialQ = searchParams.get('q') || '';
-
-  const [q, setQ] = useState(initialQ);
-  const [subId, setSubId] = useState(initialSub);
-  const [sort, setSort] = useState('recommended');
-  const [priceMin, setPriceMin] = useState('');
-  const [priceMax, setPriceMax] = useState('');
-  const [durationMin, setDurationMin] = useState('');
-  const [durationMax, setDurationMax] = useState('');
-  const [country, setCountry] = useState('');
-  const [city, setCity] = useState('');
+  const [q, setQ] = useState(searchParams.get("q") || "");
+  const [subId, setSubId] = useState(searchParams.get("subcategory") || "");
+  const [sort, setSort] = useState("recommended");
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
+  const [durationMin, setDurationMin] = useState("");
+  const [durationMax, setDurationMax] = useState("");
+  const [country, setCountry] = useState("");
+  const [city, setCity] = useState("");
+  const [durationUnit, setDurationUnit] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const debouncedQ = useDebounced(q, 400);
-
-  const params = useMemo(() => {
-    const p = { page, sort, per_page: 20 };
-    if (debouncedQ) p.q = debouncedQ;
-    if (subId) p.subcategory_id = subId;
-    if (priceMin) p.price_min = priceMin;
-    if (priceMax) p.price_max = priceMax;
-    if (durationMin) p.duration_min = durationMin;
-    if (durationMax) p.duration_max = durationMax;
-    if (country) p.destination_country = country;
-    if (city) p.destination_city = city;
-    return p;
-  }, [debouncedQ, subId, sort, priceMin, priceMax, durationMin, durationMax, country, city, page]);
+  const debouncedPriceMin = useDebounced(priceMin, 400);
+  const debouncedPriceMax = useDebounced(priceMax, 400);
+  const debouncedDurationMin = useDebounced(durationMin, 400);
+  const debouncedDurationMax = useDebounced(durationMax, 400);
+  const params = useMemo(
+    () => ({
+      page,
+      per_page: 20,
+      sort,
+      q: debouncedQ,
+      subcategory_id: subId,
+      destination_country: country,
+      destination_city: city,
+      price_min: debouncedPriceMin,
+      price_max: debouncedPriceMax,
+      duration_min: debouncedDurationMin,
+      duration_max: debouncedDurationMax,
+      duration_unit: durationUnit,
+    }),
+    [
+      page,
+      sort,
+      debouncedQ,
+      subId,
+      country,
+      city,
+      debouncedPriceMin,
+      debouncedPriceMax,
+      debouncedDurationMin,
+      debouncedDurationMax,
+      durationUnit,
+    ],
+  );
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ, subId, sort, priceMin, priceMax, durationMin, durationMax, country, city]);
+  }, [
+    debouncedQ,
+    subId,
+    sort,
+ debouncedPriceMin, debouncedPriceMax,
+    debouncedDurationMin, debouncedDurationMax,
+    country,
+    city,
+    durationUnit,
+  ]);
 
   useEffect(() => {
     const next = {};
@@ -72,21 +100,28 @@ export default function MarketplacePage() {
     setSearchParams(next, { replace: true });
   }, [subId, debouncedQ, setSearchParams]);
 
-  const { data, isLoading, error } = usePublicServices(params);
+  const { data, isLoading, error } = useMarketplaceSearch(params);
   const items = data?.data || [];
   const meta = data?.meta;
 
   const resetFilters = () => {
-    setPriceMin('');
-    setPriceMax('');
-    setDurationMin('');
-    setDurationMax('');
-    setCountry('');
-    setCity('');
+    setPriceMin("");
+    setPriceMax("");
+    setDurationMin("");
+    setDurationMax("");
+    setCountry("");
+    setCity("");
+    setDurationUnit("");
   };
 
   const hasFilters =
-    priceMin || priceMax || durationMin || durationMax || country || city;
+    priceMin ||
+    priceMax ||
+    durationMin ||
+    durationMax ||
+    country ||
+    city ||
+    durationUnit;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -97,11 +132,11 @@ export default function MarketplacePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1 overflow-x-auto no-scrollbar py-2">
             <button
-              onClick={() => setSubId('')}
+              onClick={() => setSubId("")}
               className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-semibold ${
                 !subId
-                  ? 'bg-brand-600 text-white'
-                  : 'text-slate-600 hover:bg-slate-100'
+                  ? "bg-brand-600 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
               }`}
             >
               All
@@ -112,8 +147,8 @@ export default function MarketplacePage() {
                 onClick={() => setSubId(String(s.id))}
                 className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-semibold ${
                   String(subId) === String(s.id)
-                    ? 'bg-brand-600 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
                 }`}
               >
                 {s.name}
@@ -153,10 +188,14 @@ export default function MarketplacePage() {
               onChange={(e) => setSort(e.target.value)}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
             >
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value} disabled={s.disabled}>
-                  {s.label}
-                  {s.disabled ? ' (coming soon)' : ''}
+              {Object.entries(sortOptions).map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label}
+                </option>
+              ))}
+              {Object.entries(unavailableSorts).map(([k, label]) => (
+                <option key={k} value={k} disabled>
+                  {label}
                 </option>
               ))}
             </select>
@@ -176,40 +215,72 @@ export default function MarketplacePage() {
                   </button>
                 )}
               </div>
+
               <div className="grid sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Destination country
+                    Available Destination country
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    placeholder="Any country"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-                  />
+                  >
+                    <option value="">Select country</option>
+                    {countries.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Destination city
+                    Available Destination city
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="Any city"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-                  />
+                  >
+                    <option value="">Select city</option>
+                    {cities.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Duration unit
+                  </label>
+                  <select
+                    value={durationUnit}
+                    onChange={(e) => setDurationUnit(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                  >
+                    <option value="">Any unit</option>
+                    {durationUnits.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Price min
+                      Price min ({priceRange.currency})
                     </label>
                     <input
                       type="number"
                       value={priceMin}
                       onChange={(e) => setPriceMin(e.target.value)}
+                      min="0"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                   </div>
@@ -221,11 +292,13 @@ export default function MarketplacePage() {
                       type="number"
                       value={priceMax}
                       onChange={(e) => setPriceMax(e.target.value)}
+                      min="0"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:col-span-3">
+
+                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
                       Duration min
@@ -234,6 +307,7 @@ export default function MarketplacePage() {
                       type="number"
                       value={durationMin}
                       onChange={(e) => setDurationMin(e.target.value)}
+                      min="1"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                   </div>
@@ -245,14 +319,18 @@ export default function MarketplacePage() {
                       type="number"
                       value={durationMax}
                       onChange={(e) => setDurationMax(e.target.value)}
+                      min="1"
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-slate-400 mt-3">
-                Rating, reviews, and agent level filters are coming soon.
-              </p>
+
+              {Object.keys(unavailableFilters).length > 0 && (
+                <p className="text-xs text-slate-400 mt-3">
+                  {Object.values(unavailableFilters).join(" · ")}
+                </p>
+              )}
             </div>
           )}
         </div>

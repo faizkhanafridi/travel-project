@@ -73,5 +73,8 @@ class AppServiceProvider extends ServiceProvider
         // MODULE 04 Agents Rate limits
         RateLimiter::for('service-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
         RateLimiter::for('service-wizard', fn(Request $r) => Limit::perMinutes(10, 60)->by($r->user()?->id ?? $r->ip()));
+
+        // MODULE 05 MarketPlace Rate limits
+        RateLimiter::for('marketplace-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
     }
 }

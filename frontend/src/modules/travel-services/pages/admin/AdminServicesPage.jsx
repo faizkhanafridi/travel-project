@@ -4,6 +4,7 @@ import { Search, ChevronRight } from 'lucide-react';
 import Navbar from '../../../../components/layout/Navbar';
 import Alert from '../../../../components/ui/Alert';
 import { useAdminServices } from '../../hooks/useService';
+import { useCurrencyConverter } from '../../hooks/useService';
 
 const STATUSES = [
   { value: '', label: 'All' },
@@ -23,7 +24,7 @@ export default function AdminServicesPage() {
 
   const items = data?.data || [];
   const meta = data?.meta;
-
+const { format } = useCurrencyConverter();
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -97,9 +98,9 @@ export default function AdminServicesPage() {
                       <td className="px-4 py-3 font-medium text-slate-900">{s.title}</td>
                       <td className="px-4 py-3 text-slate-700">{s.agent || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{s.category || '—'}</td>
-                      <td className="px-4 py-3 text-slate-900 font-semibold">
-                        USD {Number(s.price).toLocaleString()}
-                      </td>
+                   <td className="px-4 py-3 text-slate-900 font-semibold">
+  {format(s.price)}
+</td>
                       <td className="px-4 py-3">
                         <StatusBadge status={s.status} />
                       </td>
