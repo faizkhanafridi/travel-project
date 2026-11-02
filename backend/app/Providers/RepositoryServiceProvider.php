@@ -3,14 +3,18 @@
 
 namespace App\Providers;
 
+use App\Repositories\Contracts\Agent\AgentRepositoryInterface;
 use App\Repositories\Contracts\Auth\PasswordResetCodeRepositoryInterface;
 use App\Repositories\Contracts\Auth\PendingRegistrationRepositoryInterface;
 use App\Repositories\Contracts\Auth\UserRepositoryInterface;
+use App\Repositories\Contracts\TravelService\TravelServiceRepositoryInterface;
 use App\Repositories\Contracts\UserProfile\EmailChange\EmailChangeRequestRepositoryInterface;
 use App\Repositories\Contracts\UserProfile\ProfileRepositoryInterface;
+use App\Repositories\Eloquent\Agent\AgentRepository;
 use App\Repositories\Eloquent\Auth\PasswordResetCodeRepository;
 use App\Repositories\Eloquent\Auth\PendingRegistrationRepository;
 use App\Repositories\Eloquent\Auth\UserRepository;
+use App\Repositories\Eloquent\TravelService\TravelServiceRepository;
 use App\Repositories\Eloquent\UserProfile\EmailChange\EmailChangeRequestRepository;
 use App\Repositories\Eloquent\UserProfile\ProfileRepository;
 use Illuminate\Support\ServiceProvider;
@@ -33,8 +37,14 @@ class RepositoryServiceProvider extends ServiceProvider
 
         // Module 03
         $this->app->bind(
-            \App\Repositories\Contracts\Agent\AgentRepositoryInterface::class,
-            \App\Repositories\Eloquent\Agent\AgentRepository::class,
+            AgentRepositoryInterface::class,
+            AgentRepository::class,
+        );
+
+        // Module 04
+        $this->app->bind(
+            TravelServiceRepositoryInterface::class,
+            TravelServiceRepository::class,
         );
     }
 }

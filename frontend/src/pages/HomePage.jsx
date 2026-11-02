@@ -1,12 +1,21 @@
-import { Link } from 'react-router-dom';
-import { ArrowRight, Briefcase, Compass, Shield, Sparkles, User } from 'lucide-react';
-import Navbar from '../components/layout/Navbar';
-import { useAuthStore } from '../stores/authStore';
+import { Link } from "react-router-dom";
+import {
+  ArrowRight,
+  Briefcase,
+  Compass,
+  ListChecks,
+  Shield,
+  Sparkles,
+  User,
+} from "lucide-react";
+import Navbar from "../components/layout/Navbar";
+import { useAuthStore } from "../stores/authStore";
 
 export default function HomePage() {
   const user = useAuthStore((s) => s.user);
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -17,13 +26,13 @@ export default function HomePage() {
             className="absolute inset-0 opacity-20"
             style={{
               backgroundImage:
-                'radial-gradient(circle at 15% 20%, #fff 0, transparent 40%), radial-gradient(circle at 85% 80%, #fff 0, transparent 45%)',
+                "radial-gradient(circle at 15% 20%, #fff 0, transparent 40%), radial-gradient(circle at 85% 80%, #fff 0, transparent 45%)",
             }}
           />
           <div className="relative">
             <p className="text-white/80 text-sm font-medium mb-2 flex items-center gap-2">
               <Sparkles className="w-4 h-4" />
-              {greeting}, {user?.name?.split(' ')[0] || 'traveler'}
+              {greeting}, {user?.name?.split(" ")[0] || "traveler"}
             </p>
             <h1 className="text-3xl sm:text-4xl font-extrabold mb-3">
               Your travel journey starts here
@@ -59,38 +68,48 @@ export default function HomePage() {
           {user?.is_super_admin ? (
             <Card
               icon={Shield}
-              title="Admin: agent applications"
-              description="Review, approve, or reject pending agent applications."
+              title="Admin dashboards"
+              description="Manage agents, services, and platform moderation."
               cta="Open admin"
               to="/admin/agents"
               accent
             />
-          ) : user?.is_customer && !user?.is_agent ? (
-            <Card
-              icon={Briefcase}
-              title="Become an agent"
-              description="Apply to sell travel services, receive custom requests, and earn with 98% payout."
-              cta="Start application"
-              to="/agent/apply"
-              accent
-            />
-         ) : user?.is_agent ? (
-  <Card
-    icon={Briefcase}
-    title="Manage your agency"
-    description="Edit agency information, business details, and operating hours."
-    cta="Open account"
-    to="/agent/account"
-  />
-) : (
-            <Card
-              icon={Compass}
-              title="Browse marketplace"
-              description="Explore verified services from local agencies across the globe."
-              cta="Coming soon"
-              to="/"
-              disabled
-            />
+          ) : user?.is_agent ? (
+            <>
+              <Card
+                icon={Briefcase}
+                title="Manage your agency"
+                description="Edit agency information and operating hours."
+                cta="Open account"
+                to="/agent/account"
+              />
+              <Card
+                icon={ListChecks}
+                title="My services"
+                description="Create and manage travel services listed in the marketplace."
+                cta="Open services"
+                to="/services/mine"
+                accent
+              />
+            </>
+          ) : (
+            <>
+              <Card
+                icon={Compass}
+                title="Browse marketplace"
+                description="Explore verified services from local agencies across the globe."
+                cta="Open marketplace"
+                to="/marketplace"
+                accent
+              />
+              <Card
+                icon={Briefcase}
+                title="Become an agent"
+                description="Apply to sell travel services, receive custom requests, and earn with 98% payout."
+                cta="Start application"
+                to="/agent/apply"
+              />
+            </>
           )}
         </div>
       </main>
@@ -103,28 +122,30 @@ function Card({ icon: Icon, title, description, cta, to, accent, disabled }) {
     <div
       className={`rounded-2xl border p-6 ${
         accent
-          ? 'border-brand-200 bg-gradient-to-br from-brand-50 to-white'
-          : 'border-slate-200 bg-white'
+          ? "border-brand-200 bg-gradient-to-br from-brand-50 to-white"
+          : "border-slate-200 bg-white"
       }`}
     >
       <div
         className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${
-          accent ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'
+          accent ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700"
         }`}
       >
         <Icon className="w-5 h-5" />
       </div>
       <h3 className="font-semibold text-slate-900 mb-1">{title}</h3>
-      <p className="text-sm text-slate-500 mb-4 leading-relaxed">{description}</p>
+      <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+        {description}
+      </p>
       <Link
         to={to}
         aria-disabled={disabled}
         className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
           disabled
-            ? 'text-slate-400 pointer-events-none'
+            ? "text-slate-400 pointer-events-none"
             : accent
-            ? 'text-brand-700 hover:text-brand-800'
-            : 'text-slate-700 hover:text-slate-900'
+              ? "text-brand-700 hover:text-brand-800"
+              : "text-slate-700 hover:text-slate-900"
         }`}
       >
         {cta}

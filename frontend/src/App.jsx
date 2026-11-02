@@ -37,6 +37,12 @@ import AdminAgentsPage from "./modules/agent/pages/admin/AdminAgentsPage";
 import AdminAgentReviewPage from "./modules/agent/pages/admin/AdminAgentReviewPage";
 import AgentAccountPage from "./modules/agent/pages/AgentAccountPage";
 import PublicAgentPage from "./modules/agent/pages/PublicAgentPage";
+import MarketplacePage from './modules/travel-services/pages/MarketplacePage';
+import MyServicesPage from './modules/travel-services/pages/MyServicesPage';
+import ServiceWizardPage from './modules/travel-services/pages/ServiceWizardPage';
+import ServiceDetailPage from './modules/travel-services/pages/ServiceDetailPage';
+import AdminServicesPage from './modules/travel-services/pages/admin/AdminServicesPage';
+import AdminServiceReviewPage from './modules/travel-services/pages/admin/AdminServiceReviewPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -228,7 +234,27 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           <Route path="/agency/:uuid" element={<PublicAgentPage />} />
+<Route path="/marketplace" element={<MarketplacePage />} />
+<Route path="/services/:uuid" element={<ServiceDetailPage />} />
+
+<Route
+  path="/services/mine"
+  element={
+    <ProtectedRoute>
+      <MyServicesPage />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/services/mine/:uuid"
+  element={
+    <ProtectedRoute>
+      <ServiceWizardPage />
+    </ProtectedRoute>
+  }
+/>
 
           {/* Admin */}
           <Route
@@ -247,6 +273,10 @@ export default function App() {
               </AdminRoute>
             }
           />
+
+          
+<Route path="/admin/services" element={<AdminRoute><AdminServicesPage /></AdminRoute>} />
+<Route path="/admin/services/:uuid" element={<AdminRoute><AdminServiceReviewPage /></AdminRoute>} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

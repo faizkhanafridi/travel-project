@@ -1,8 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Plane, User, Briefcase, Shield, Settings } from 'lucide-react';
-import { useAuthStore } from '../../stores/authStore';
-import { authService } from '../../modules/auth/services/authService';
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  ChevronDown,
+  LogOut,
+  Plane,
+  User,
+  Briefcase,
+  Shield,
+  Settings,
+  Compass,
+  ListChecks,
+} from "lucide-react";
+
+import { useAuthStore } from "../../stores/authStore";
+import { authService } from "../../modules/auth/services/authService";
+import CurrencySwitcher from "../../modules/travel-services/components/CurrencySwitcher";
 
 export default function Navbar() {
   const { user, clearUser } = useAuthStore();
@@ -14,8 +26,8 @@ export default function Navbar() {
     const onClick = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
   const logout = async () => {
@@ -25,13 +37,13 @@ export default function Navbar() {
       // ignore
     }
     clearUser();
-    navigate('/login', { replace: true });
+    navigate("/login", { replace: true });
   };
 
-  const initials = (user?.name || 'U')
-    .split(' ')
+  const initials = (user?.name || "U")
+    .split(" ")
     .map((s) => s[0])
-    .join('')
+    .join("")
     .slice(0, 2)
     .toUpperCase();
 
@@ -58,7 +70,15 @@ export default function Navbar() {
                 Become an Agent
               </Link>
             )}
+            <Link
+              to="/marketplace"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              <Compass className="w-4 h-4" />
+              Marketplace
+            </Link>
 
+            <CurrencySwitcher />
             <div className="relative" ref={ref}>
               <button
                 type="button"
@@ -77,23 +97,63 @@ export default function Navbar() {
               {open && (
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg py-1 animate-fade-in">
                   <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{user.name}</p>
-                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {user.name}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {user.email}
+                    </p>
                   </div>
-                  <MenuLink to="/profile" icon={User} onClick={() => setOpen(false)}>
+                  <MenuLink
+                    to="/profile"
+                    icon={User}
+                    onClick={() => setOpen(false)}
+                  >
                     My profile
                   </MenuLink>
-                {user.is_agent && (
-  <MenuLink to="/agent/account" icon={Briefcase} onClick={() => setOpen(false)}>
-    My agency
-  </MenuLink>
-)}
+
+                  {user?.is_agent && (
+                    <Link
+                      to="/services/mine"
+                      className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      <ListChecks className="w-4 h-4" />
+                      My services
+                    </Link>
+                  )}
+
                   {user.is_super_admin && (
-                    <MenuLink to="/admin/agents" icon={Shield} onClick={() => setOpen(false)}>
+                    <MenuLink
+                      to="/admin/services"
+                      icon={Shield}
+                      onClick={() => setOpen(false)}
+                    >
+                      Admin · Services
+                    </MenuLink>
+                  )}
+                  {user.is_agent && (
+                    <MenuLink
+                      to="/agent/account"
+                      icon={Briefcase}
+                      onClick={() => setOpen(false)}
+                    >
+                      My agency
+                    </MenuLink>
+                  )}
+                  {user.is_super_admin && (
+                    <MenuLink
+                      to="/admin/agents"
+                      icon={Shield}
+                      onClick={() => setOpen(false)}
+                    >
                       Admin · Agents
                     </MenuLink>
                   )}
-                  <MenuLink to="/profile" icon={Settings} onClick={() => setOpen(false)}>
+                  <MenuLink
+                    to="/profile"
+                    icon={Settings}
+                    onClick={() => setOpen(false)}
+                  >
                     Settings
                   </MenuLink>
                   <button

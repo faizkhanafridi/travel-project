@@ -23,8 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->prefix('api/auth')
                 ->name('auth.')
                 ->group(base_path('routes/auth.php'));
-                
-                
+
+
             // Module 02
             Route::middleware('api')
                 ->prefix('api/user-profile')
@@ -35,6 +35,11 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::middleware('api')
                 ->prefix('api/agent')
                 ->group(base_path('routes/agent.php'));
+
+            // Module 04
+            Route::middleware('api')
+                ->prefix('api/services')
+                ->group(base_path('routes/travel-service.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
