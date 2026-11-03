@@ -29,6 +29,8 @@ class AuthUserResource extends JsonResource
             'is_customer' => $this->hasRole('customer'),
             'is_agent' => $this->hasRole('agent'),
             'is_super_admin' => $this->hasRole('super_admin'),
+            'member_since' => $this->created_at?->toIso8601String(),
+
         ];
     }
 }

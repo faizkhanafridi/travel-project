@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   MapPin,
@@ -7,10 +7,13 @@ import {
   Clock,
   Briefcase,
   ShieldCheck,
-} from 'lucide-react';
-import Navbar from '../../../components/layout/Navbar';
-import { usePublicAgent } from '../hooks/useAgent';
-import { DAYS } from '../components/HoursEditor';
+  MessageCircle,
+} from "lucide-react";
+import Navbar from "../../../components/layout/Navbar";
+import { usePublicAgent } from "../hooks/useAgent";
+import { DAYS } from "../components/HoursEditor";
+import { useAuthStore } from "../../../stores/authStore";
+import { useStartConversation } from "../../messaging/hooks/useMessaging";
 
 // Agency public profile — uses GET /api/agent/public/{uuid}
 // Shows agency info only. Never renders owner email, phone, or documents.
@@ -18,7 +21,18 @@ export default function PublicAgentPage() {
   const { uuid } = useParams();
   const { data, isLoading, error } = usePublicAgent(uuid);
   const agent = data?.data;
+  const navigate = useNavigate();
+  const start = useStartConversation();
+  const user = useAuthStore((s) => s.user);
+  const isCustomer = user?.is_customer && !user?.is_agent;
 
+  const messageAgent = async () => {
+    if (!agent?.uuid) return;
+    try {
+      const result = await start.mutateAsync({ agent_uuid: agent.uuid });
+      navigate(`/messages?c=${result.data.uuid}`);
+    } catch {}
+  };
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -57,7 +71,7 @@ export default function PublicAgentPage() {
             className="absolute inset-0 opacity-20"
             style={{
               backgroundImage:
-                'radial-gradient(circle at 15% 20%, #fff 0, transparent 40%), radial-gradient(circle at 85% 80%, #fff 0, transparent 45%)',
+                "radial-gradient(circle at 15% 20%, #fff 0, transparent 40%), radial-gradient(circle at 85% 80%, #fff 0, transparent 45%)",
             }}
           />
           <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
@@ -67,7 +81,7 @@ export default function PublicAgentPage() {
             <div className="flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl sm:text-3xl font-extrabold">
-                  {agent.agency_name || 'Travel Agency'}
+                  {agent.agency_name || "Travel Agency"}
                 </h1>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full">
                   <ShieldCheck className="w-3.5 h-3.5" />
@@ -85,7 +99,7 @@ export default function PublicAgentPage() {
                     <MapPin className="w-3.5 h-3.5" />
                     {[agent.agency_city, agent.agency_country]
                       .filter(Boolean)
-                      .join(', ')}
+                      .join(", ")}
                   </span>
                 )}
                 {agent.years_in_business !== null &&
@@ -93,7 +107,7 @@ export default function PublicAgentPage() {
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
                       {agent.years_in_business} yr
-                      {agent.years_in_business === 1 ? '' : 's'} in business
+                      {agent.years_in_business === 1 ? "" : "s"} in business
                     </span>
                   )}
                 {agent.business_type && (
@@ -106,7 +120,19 @@ export default function PublicAgentPage() {
             </div>
           </div>
         </div>
-
+        {isCustomer && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={messageAgent}
+              disabled={start.isPending}
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-brand-700 disabled:opacity-50"
+            >
+              <MessageCircle className="w-4 h-4" />
+              Message this agent
+            </button>
+          </div>
+        )}
         <div className="grid gap-4 mt-6">
           {agent.business_description && (
             <Section title="About the agency">
@@ -127,7 +153,7 @@ export default function PublicAgentPage() {
                       <br />
                       {[agent.agency_city, agent.agency_country]
                         .filter(Boolean)
-                        .join(', ')}
+                        .join(", ")}
                     </>
                   )}
                 </span>
@@ -216,8 +242,8 @@ export default function PublicAgentPage() {
                         <span
                           className={
                             h.is_closed
-                              ? 'text-slate-400 inline-flex items-center gap-1'
-                              : 'text-slate-800 inline-flex items-center gap-1'
+                              ? "text-slate-400 inline-flex items-center gap-1"
+                              : "text-slate-800 inline-flex items-center gap-1"
                           }
                         >
                           {h.is_closed ? (

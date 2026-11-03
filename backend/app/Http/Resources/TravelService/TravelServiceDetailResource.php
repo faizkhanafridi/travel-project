@@ -33,22 +33,24 @@ class TravelServiceDetailResource extends JsonResource
             'duration_unit' => $this->duration_unit,
             'cancellation_policy' => $this->cancellation_policy,
             'status' => $this->status?->value,
-            'category' => $this->whenLoaded('category', fn () => [
-                'id' => $this->category->id, 'name' => $this->category->name,
+            'category' => $this->whenLoaded('category', fn() => [
+                'id' => $this->category->id,
+                'name' => $this->category->name,
                 'milestone_model' => $this->category->milestone_model,
             ]),
-            'subcategory' => $this->whenLoaded('subcategory', fn () => [
-                'id' => $this->subcategory->id, 'name' => $this->subcategory->name,
+            'subcategory' => $this->whenLoaded('subcategory', fn() => [
+                'id' => $this->subcategory->id,
+                'name' => $this->subcategory->name,
             ]),
-            'agent' => $this->whenLoaded('agent', fn () => [
+            'agent' => $this->whenLoaded('agent', fn() => [
                 'uuid' => $this->agent->uuid,
                 'agency_name' => $this->agent->profile?->agency_name,
                 'country' => $this->agent->profile?->agency_country,
                 'city' => $this->agent->profile?->agency_city,
             ]),
-            'tags' => $this->whenLoaded('tags', fn () => $this->tags->pluck('tag')->values()->all()),
-            'inclusions' => $this->whenLoaded('inclusions', fn () => $this->inclusions->map(fn ($i) => $i->label)->values()->all()),
-            'extras' => $this->whenLoaded('extras', fn () => $this->extras->map(fn ($e) => [
+            'tags' => $this->whenLoaded('tags', fn() => $this->tags->pluck('tag')->values()->all()),
+            'inclusions' => $this->whenLoaded('inclusions', fn() => $this->inclusions->map(fn($i) => $i->label)->values()->all()),
+            'extras' => $this->whenLoaded('extras', fn() => $this->extras->map(fn($e) => [
                 'uuid' => $e->uuid,
                 'label' => $e->label,
                 'price' => (float) $e->price,
@@ -57,12 +59,12 @@ class TravelServiceDetailResource extends JsonResource
                 'converted_currency' => $targetCurrency,
                 'description' => $e->description,
             ])->values()->all()),
-            'images' => $this->whenLoaded('images', fn () => $this->images->map(fn ($img) => [
+            'images' => $this->whenLoaded('images', fn() => $this->images->map(fn($img) => [
                 'uuid' => $img->uuid,
                 'url' => url("/api/services/images/{$img->uuid}"),
                 'is_cover' => (bool) $img->is_cover,
             ])->values()->all()),
-            'requirements' => $this->whenLoaded('requirements', fn () => $this->requirements->map(fn ($r) => [
+            'requirements' => $this->whenLoaded('requirements', fn() => $this->requirements->map(fn($r) => [
                 'uuid' => $r->uuid,
                 'title' => $r->title,
                 'description' => $r->description,

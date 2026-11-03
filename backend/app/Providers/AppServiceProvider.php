@@ -76,5 +76,10 @@ class AppServiceProvider extends ServiceProvider
 
         // MODULE 05 MarketPlace Rate limits
         RateLimiter::for('marketplace-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
+
+        // MODULE 06 Messaging Rate limits
+                RateLimiter::for('messaging-list', fn (Request $r) => Limit::perMinute(120)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-start', fn (Request $r) => Limit::perHour(30)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-send', fn (Request $r) => Limit::perMinute(30)->by($r->user()?->id ?? $r->ip()));
     }
 }

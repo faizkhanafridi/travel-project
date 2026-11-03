@@ -13,7 +13,6 @@ return new class extends Migration
             $table->id();
             $table->uuid('uuid')->unique();
             $table->foreignId('user_id')->unique()->constrained('users')->cascadeOnDelete();
-            $table->string('display_name');
             $table->string('photo_path')->nullable();
             $table->text('bio')->nullable();
             $table->string('phone', 30)->nullable();

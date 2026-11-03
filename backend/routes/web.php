@@ -11,3 +11,4 @@ Route::prefix('api/auth')->group(function () {
 
     Route::get('social/{provider}/callback', [SocialAuthController::class, 'callback']);
 });
+

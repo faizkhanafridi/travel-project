@@ -1,7 +1,7 @@
-import { useParams, Link } from 'react-router-dom';
-import { MapPin, Globe, Calendar, ArrowLeft, Briefcase } from 'lucide-react';
-import Navbar from '../../../components/layout/Navbar';
-import { usePublicProfile } from '../hooks/useProfile';
+import { useParams, Link } from "react-router-dom";
+import { MapPin, Globe, Calendar, ArrowLeft, Briefcase } from "lucide-react";
+import Navbar from "../../../components/layout/Navbar";
+import { usePublicProfile } from "../hooks/useProfile";
 
 // Customer-facing public profile.
 // Backend already strips email / phone / docs — we only render safe fields.
@@ -39,7 +39,7 @@ export default function PublicProfilePage() {
     );
   }
 
-  const isAgent = profile.account_status === 'agent';
+  const isAgent = profile.account_status === "agent";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -56,7 +56,7 @@ export default function PublicProfilePage() {
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-slate-400">
-                  {(profile.display_name || '?').charAt(0).toUpperCase()}
+                  {(profile.display_name || "?").charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
@@ -77,16 +77,19 @@ export default function PublicProfilePage() {
                 {profile.member_since && (
                   <span className="inline-flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    Member since{' '}
-                    {new Date(profile.member_since).toLocaleDateString(undefined, {
-                      month: 'short',
-                      year: 'numeric',
-                    })}
+                    Member since{" "}
+                    {new Date(profile.member_since).toLocaleDateString(
+                      undefined,
+                      {
+                        month: "short",
+                        year: "numeric",
+                      },
+                    )}
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1 capitalize">
                   <Globe className="w-3.5 h-3.5" />
-                  {String(profile.account_status || '').replace('_', ' ')}
+                  {String(profile.account_status || "").replace("_", " ")}
                 </span>
               </div>
             </div>
@@ -109,7 +112,9 @@ export default function PublicProfilePage() {
 
           {profile.bio && (
             <div className="mt-6 pt-6 border-t border-slate-100">
-              <h2 className="text-sm font-semibold text-slate-900 mb-2">About</h2>
+              <h2 className="text-sm font-semibold text-slate-900 mb-2">
+                About
+              </h2>
               <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
                 {profile.bio}
               </p>
@@ -118,7 +123,9 @@ export default function PublicProfilePage() {
 
           {profile.languages && profile.languages.length > 0 && (
             <div className="mt-6 pt-6 border-t border-slate-100">
-              <h2 className="text-sm font-semibold text-slate-900 mb-3">Languages</h2>
+              <h2 className="text-sm font-semibold text-slate-900 mb-3">
+                Languages
+              </h2>
               <div className="flex flex-wrap gap-2">
                 {profile.languages.map((lang) => (
                   <span

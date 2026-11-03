@@ -5,7 +5,7 @@ import Navbar from "../../../../components/layout/Navbar";
 import Alert from "../../../../components/ui/Alert";
 import Button from "../../../../components/ui/Button";
 import FullPageLoader from "../../../../components/ui/FullPageLoader";
-import { useAdminService, useAdminServiceAction } from "../../hooks/useService";
+import { useAdminService, useAdminServiceAction, useCategories } from "../../hooks/useService";
 import { rejectReasonSchema } from "../../schemas";
 import { extractErrors, firstGeneral } from "../../../../lib/errors";
 import { useCurrencyConverter } from "../../hooks/useService";
@@ -21,8 +21,16 @@ export default function AdminServiceReviewPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejectErr, setRejectErr] = useState(null);
   const { format } = useCurrencyConverter();
-
   const service = data?.data;
+  console.log(service)
+
+  const { data: catRes } = useCategories();
+  const categories = catRes?.data || [];
+
+  const category = categories.find((c) => c.id === Number(service.category_id));
+  const subcategory = category?.subcategories?.find(
+    (s) => s.id === Number(service.subcategory_id),
+  );
 
   if (isLoading) {
     return (
@@ -137,11 +145,9 @@ export default function AdminServiceReviewPage() {
               {service.title}
             </h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              {service.agent?.agency_name || "Agent"} ·{" "}
-              {service.category?.name || service.category}
-              {service.subcategory?.name || service.subcategory
-                ? ` · ${service.subcategory?.name || service.subcategory}`
-                : ""}
+              {service.agent?.agency_name} ·{" "}
+              {category?.name}
+              {subcategory?.name}
             </p>
             {service.attempt > 0 && (
               <p className="text-xs text-slate-400 mt-1">

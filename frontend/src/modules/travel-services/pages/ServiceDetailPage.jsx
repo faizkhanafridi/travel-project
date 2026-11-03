@@ -6,22 +6,42 @@ import {
   CheckCircle2,
   Tag,
   CalendarDays,
+  MessageCircle 
 } from "lucide-react";
 import Navbar from "../../../components/layout/Navbar";
 import FullPageLoader from "../../../components/ui/FullPageLoader";
 import Alert from "../../../components/ui/Alert";
 import { usePublicService } from "../hooks/useService";
 import { useAuthStore } from "../../../stores/authStore";
+import { useStartConversation } from "../../messaging/hooks/useMessaging";
+import { useNavigate } from "react-router-dom";
 
 export default function ServiceDetailPage() {
   const { uuid } = useParams();
   const { data, isLoading, error } = usePublicService(uuid);
   const s = data?.data;
+  const navigate = useNavigate();
+  const start = useStartConversation();
   const user = useAuthStore((s) => s.user);
   const isAdmin = !!user?.is_super_admin;
   const isOwnerAgent =
     !!user?.is_agent && !!s?.agent && user?.agent_uuid === s.agent.uuid;
-    console.log(isOwnerAgent)
+  console.log(isOwnerAgent);
+
+  const messageAgent = async () => {
+    if (!s?.agent?.uuid) return;
+    try {
+      const result = await start.mutateAsync({
+        agent_uuid: s.agent.uuid,
+        service_uuid: s.uuid,
+      });
+      const convUuid = result.data.uuid;
+      navigate(`/messages?c=${convUuid}`);
+    } catch {
+      // error banner optional
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -241,13 +261,16 @@ export default function ServiceDetailPage() {
                     Payment coming soon (Module 10 — Finance)
                   </p>
 
-                  {s.agent && (
-                    <Link
-                      to={`/agency/${s.agent.uuid}`}
-                      className="mt-4 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  {!isAdmin && !isOwnerAgent && s.agent && (
+                    <button
+                      type="button"
+                      onClick={messageAgent}
+                      disabled={start.isPending}
+                      className="mt-3 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50"
                     >
-                      Contact agency
-                    </Link>
+                      <MessageCircle className="w-4 h-4" />
+                      Message this agent
+                    </button>
                   )}
                 </>
               )}

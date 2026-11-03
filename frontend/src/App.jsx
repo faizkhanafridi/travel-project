@@ -43,6 +43,7 @@ import ServiceDetailPage from "./modules/travel-services/pages/ServiceDetailPage
 import AdminServicesPage from "./modules/travel-services/pages/admin/AdminServicesPage";
 import AdminServiceReviewPage from "./modules/travel-services/pages/admin/AdminServiceReviewPage";
 import MarketplacePage from "./modules/marketplace/pages/MarketplacePage";
+import MessagingPage from "./modules/messaging/pages/MessagingPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -208,6 +209,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <MessagingPage />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Agent */}
           <Route
             path="/become-agent"

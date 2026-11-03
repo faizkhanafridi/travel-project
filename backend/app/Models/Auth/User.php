@@ -6,7 +6,9 @@ namespace App\Models\Auth;
 use App\Enums\Auth\OnboardingChoice;
 use App\Enums\Auth\UserStatus;
 use App\Models\Agent\Agent;
+use App\Models\UserProfile\Profile;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -56,10 +58,15 @@ class User extends Authenticatable
     }
 
     public function agent(): \Illuminate\Database\Eloquent\Relations\HasOne
-{
-    return $this->hasOne(Agent::class);
-}
+    {
+        return $this->hasOne(Agent::class);
+    }
 
+
+    public function profile(): HasOne
+    {
+        return $this->hasOne(Profile::class);
+    }
 
     public function uniqueIds(): array
     {

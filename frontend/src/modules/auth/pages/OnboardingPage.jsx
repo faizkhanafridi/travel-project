@@ -14,36 +14,34 @@ export default function OnboardingPage() {
   const [submitting, setSubmitting] = useState(null); // 'customer' | 'agent' | 'skip'
   const [error, setError] = useState(null);
 
-  const choose = async (choice) => {
-    setSubmitting(choice);
-    setError(null);
-    try {
-      const result = await authService.chooseRole({ choice });
-      setUser(result.data);
-      navigate('/profile-setup', { replace: true });
-    } catch (err) {
-      const errs = extractErrors(err);
-      setError(firstGeneral(errs));
-    } finally {
-      setSubmitting(null);
-    }
-  };
+const choose = async (choice) => {
+  setSubmitting(choice);
+  setError(null);
+  try {
+    const result = await authService.chooseRole({ choice });
+    setUser(result.data);
+    const target = choice === 'agent' ? '/agent/apply' : '/profile';
+    window.location.href = target;
+  } catch (err) {
+    const errs = extractErrors(err);
+    setError(firstGeneral(errs));
+    setSubmitting(null);
+  }
+};
 
-  const skip = async () => {
-    setSubmitting('skip');
-    setError(null);
-    try {
-      const result = await authService.skipOnboarding();
-      setUser(result.data);
-      navigate('/', { replace: true });
-    } catch (err) {
-      const errs = extractErrors(err);
-      setError(firstGeneral(errs));
-    } finally {
-      setSubmitting(null);
-    }
-  };
-
+const skip = async () => {
+  setSubmitting('skip');
+  setError(null);
+  try {
+    const result = await authService.skipOnboarding();
+    setUser(result.data);
+    window.location.href = '/profile';
+  } catch (err) {
+    const errs = extractErrors(err);
+    setError(firstGeneral(errs));
+    setSubmitting(null);
+  }
+};
   return (
     <AuthLayout
       title="How will you use Travel Marketplace?"

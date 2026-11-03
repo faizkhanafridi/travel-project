@@ -1,0 +1,1025 @@
+
+BROADCAST_CONNECTION=reverb
+
+REVERB_APP_ID=
+REVERB_APP_KEY=
+REVERB_APP_SECRET=
+REVERB_HOST="localhost"
+REVERB_PORT=8080
+REVERB_SCHEME=http
+
+VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
+VITE_REVERB_HOST="${REVERB_HOST}"
+VITE_REVERB_PORT="${REVERB_PORT}"
+VITE_REVERB_SCHEME="${REVERB_SCHEME}"
+
+<?php
+// database/migrations/2024_01_06_000100_create_conversations_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('conversations', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->string('type')->default('customer_agent'); // reserved for future: group, support
+            $table->foreignId('customer_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('agent_id')->constrained('agents')->cascadeOnDelete();
+            $table->foreignId('travel_service_id')->nullable()->constrained('travel_services')->nullOnDelete();
+            $table->timestamp('last_message_at')->nullable();
+            $table->timestamps();
+
+            // one thread per (customer, agent) pair
+            $table->unique(['customer_id', 'agent_id']);
+            $table->index('last_message_at');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('conversations');
+    }
+};<?php
+// database/migrations/2024_01_06_000200_create_conversation_participants_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('conversation_participants', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('conversation_id')->constrained('conversations')->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->timestamp('last_read_at')->nullable();
+            $table->boolean('is_muted')->default(false);
+            $table->timestamps();
+
+            $table->unique(['conversation_id', 'user_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('conversation_participants');
+    }
+};<?php
+// database/migrations/2024_01_06_000300_create_messages_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('uuid')->unique();
+            $table->foreignId('conversation_id')->constrained('conversations')->cascadeOnDelete();
+            $table->foreignId('sender_id')->constrained('users')->cascadeOnDelete();
+            $table->string('type')->default('text'); // text | system
+            $table->text('body');
+            $table->json('meta')->nullable();
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+
+            $table->index(['conversation_id', 'created_at']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('messages');
+    }
+};<?php
+// app/Enums/Messaging/MessageType.php
+
+namespace App\Enums\Messaging;
+
+enum MessageType: string
+{
+    case TEXT = 'text';
+    case SYSTEM = 'system';
+}<?php
+// app/Models/Messaging/Conversation.php
+
+namespace App\Models\Messaging;
+
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use App\Models\TravelService\TravelService;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+class Conversation extends Model
+{
+    use HasUuids;
+
+    protected $fillable = [
+        'uuid',
+        'type',
+        'customer_id',
+        'agent_id',
+        'travel_service_id',
+        'last_message_at',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'last_message_at' => 'datetime',
+        ];
+    }
+
+    public function uniqueIds(): array { return ['uuid']; }
+    public function getRouteKeyName(): string { return 'uuid'; }
+
+    public function customer(): BelongsTo { return $this->belongsTo(User::class, 'customer_id'); }
+    public function agentRecord(): BelongsTo { return $this->belongsTo(Agent::class, 'agent_id'); }
+    public function travelService(): BelongsTo { return $this->belongsTo(TravelService::class); }
+    public function participants(): HasMany { return $this->hasMany(ConversationParticipant::class); }
+    public function messages(): HasMany { return $this->hasMany(Message::class); }
+    public function lastMessage(): HasOne
+    {
+        return $this->hasOne(Message::class)->latestOfMany();
+    }
+
+    public function includesUser(int $userId): bool
+    {
+        return $this->customer_id === $userId
+            || $this->agentRecord?->user_id === $userId;
+    }
+
+    public function isCustomer(int $userId): bool { return $this->customer_id === $userId; }
+    public function isAgentUser(int $userId): bool
+    {
+        return $this->agentRecord?->user_id === $userId;
+    }
+}<?php
+// app/Models/Messaging/ConversationParticipant.php
+
+namespace App\Models\Messaging;
+
+use App\Models\Auth\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class ConversationParticipant extends Model
+{
+    protected $fillable = [
+        'conversation_id',
+        'user_id',
+        'last_read_at',
+        'is_muted',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'last_read_at' => 'datetime',
+            'is_muted' => 'boolean',
+        ];
+    }
+
+    public function conversation(): BelongsTo { return $this->belongsTo(Conversation::class); }
+    public function user(): BelongsTo { return $this->belongsTo(User::class); }
+}<?php
+// app/Models/Messaging/Message.php
+
+namespace App\Models\Messaging;
+
+use App\Enums\Messaging\MessageType;
+use App\Models\Auth\User;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Message extends Model
+{
+    use HasUuids;
+
+    protected $fillable = [
+        'uuid',
+        'conversation_id',
+        'sender_id',
+        'type',
+        'body',
+        'meta',
+        'read_at',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'type' => MessageType::class,
+            'meta' => 'array',
+            'read_at' => 'datetime',
+        ];
+    }
+
+    public function uniqueIds(): array { return ['uuid']; }
+
+    public function conversation(): BelongsTo { return $this->belongsTo(Conversation::class); }
+    public function sender(): BelongsTo { return $this->belongsTo(User::class, 'sender_id'); }
+}<?php
+// app/Repositories/Contracts/Messaging/ConversationRepositoryInterface.php
+
+namespace App\Repositories\Contracts\Messaging;
+
+use App\Models\Auth\User;
+use App\Models\Messaging\Conversation;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+
+interface ConversationRepositoryInterface
+{
+    public function findByUuid(string $uuid): ?Conversation;
+    public function findForUser(string $uuid, User $user): ?Conversation;
+    public function findBetweenCustomerAndAgent(int $customerId, int $agentId): ?Conversation;
+    public function create(array $data): Conversation;
+    public function paginateForUser(User $user, array $filters): LengthAwarePaginator;
+    public function touchLastMessage(Conversation $conversation): void;
+}<?php
+// app/Repositories/Eloquent/Messaging/ConversationRepository.php
+
+namespace App\Repositories\Eloquent\Messaging;
+
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use App\Models\Messaging\Conversation;
+use App\Repositories\Contracts\Messaging\ConversationRepositoryInterface;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
+
+class ConversationRepository implements ConversationRepositoryInterface
+{
+    public function findByUuid(string $uuid): ?Conversation
+    {
+        return Conversation::with(['customer', 'agentRecord.user', 'agentRecord.profile', 'travelService', 'lastMessage'])
+            ->where('uuid', $uuid)
+            ->first();
+    }
+
+    public function findForUser(string $uuid, User $user): ?Conversation
+    {
+        return Conversation::with(['customer', 'agentRecord.user', 'agentRecord.profile', 'travelService', 'lastMessage'])
+            ->where('uuid', $uuid)
+            ->where(function ($q) use ($user) {
+                $q->where('customer_id', $user->id)
+                  ->orWhereHas('agentRecord', fn ($a) => $a->where('user_id', $user->id));
+            })
+            ->first();
+    }
+
+    public function findBetweenCustomerAndAgent(int $customerId, int $agentId): ?Conversation
+    {
+        return Conversation::where('customer_id', $customerId)
+            ->where('agent_id', $agentId)
+            ->first();
+    }
+
+    public function create(array $data): Conversation
+    {
+        $data['uuid'] = $data['uuid'] ?? (string) Str::uuid();
+        return Conversation::create($data);
+    }
+
+    public function paginateForUser(User $user, array $filters): LengthAwarePaginator
+    {
+        $query = Conversation::with(['customer', 'agentRecord.user', 'agentRecord.profile', 'lastMessage'])
+            ->where(function ($q) use ($user) {
+                $q->where('customer_id', $user->id)
+                  ->orWhereHas('agentRecord', fn ($a) => $a->where('user_id', $user->id));
+            })
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id');
+
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search, $user) {
+                $q->whereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%"))
+                  ->orWhereHas('agentRecord.user', fn ($a) => $a->where('name', 'like', "%{$search}%"))
+                  ->orWhereHas('agentRecord.profile', fn ($p) => $p->where('agency_name', 'like', "%{$search}%"));
+            });
+        }
+
+        return $query->paginate((int) ($filters['per_page'] ?? 20));
+    }
+
+    public function touchLastMessage(Conversation $conversation): void
+    {
+        $conversation->forceFill(['last_message_at' => now()])->save();
+    }
+}<?php
+// app/Repositories/Contracts/Messaging/MessageRepositoryInterface.php
+
+namespace App\Repositories\Contracts\Messaging;
+
+use App\Models\Messaging\Conversation;
+use App\Models\Messaging\Message;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+
+interface MessageRepositoryInterface
+{
+    public function create(array $data): Message;
+    public function paginateForConversation(Conversation $conversation, array $filters): LengthAwarePaginator;
+    public function markConversationRead(Conversation $conversation, int $userId): void;
+    public function unreadCount(Conversation $conversation, int $userId): int;
+}<?php
+// app/Repositories/Eloquent/Messaging/MessageRepository.php
+
+namespace App\Repositories\Eloquent\Messaging;
+
+use App\Models\Messaging\Conversation;
+use App\Models\Messaging\Message;
+use App\Repositories\Contracts\Messaging\MessageRepositoryInterface;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
+
+class MessageRepository implements MessageRepositoryInterface
+{
+    public function create(array $data): Message
+    {
+        $data['uuid'] = $data['uuid'] ?? (string) Str::uuid();
+        return Message::create($data);
+    }
+
+    public function paginateForConversation(Conversation $conversation, array $filters): LengthAwarePaginator
+    {
+        $query = Message::with('sender')
+            ->where('conversation_id', $conversation->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+
+        return $query->paginate((int) ($filters['per_page'] ?? 30));
+    }
+
+    public function markConversationRead(Conversation $conversation, int $userId): void
+    {
+        Message::where('conversation_id', $conversation->id)
+            ->where('sender_id', '!=', $userId)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        $conversation->participants()
+            ->where('user_id', $userId)
+            ->update(['last_read_at' => now()]);
+    }
+
+    public function unreadCount(Conversation $conversation, int $userId): int
+    {
+        return Message::where('conversation_id', $conversation->id)
+            ->where('sender_id', '!=', $userId)
+            ->whereNull('read_at')
+            ->count();
+    }
+}<?php
+// app/Events/Messaging/MessageSent.php
+
+namespace App\Events\Messaging;
+
+use App\Models\Messaging\Message;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+
+class MessageSent implements ShouldBroadcast
+{
+    use Dispatchable, InteractsWithSockets, SerializesModels;
+
+    public function __construct(public Message $message) {}
+
+    public function broadcastOn(): array
+    {
+        return [new PrivateChannel('conversation.' . $this->message->conversation->uuid)];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'message.sent';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'uuid' => $this->message->uuid,
+            'conversation_uuid' => $this->message->conversation->uuid,
+            'sender' => [
+                'id' => $this->message->sender_id,
+                'name' => $this->message->sender?->name,
+            ],
+            'type' => $this->message->type?->value,
+            'body' => $this->message->body,
+            'meta' => $this->message->meta,
+            'created_at' => $this->message->created_at?->toIso8601String(),
+        ];
+    }
+}<?php
+// app/Broadcasting/Messaging/ConversationChannel.php
+
+namespace App\Broadcasting\Messaging;
+
+use App\Models\Auth\User;
+use App\Models\Messaging\Conversation;
+
+class ConversationChannel
+{
+    /**
+     * Authorize whether the given user may listen on this private conversation channel.
+     */
+    public function join(User $user, string $conversationUuid): bool
+    {
+        $conversation = Conversation::where('uuid', $conversationUuid)->first();
+        if (! $conversation) {
+            return false;
+        }
+        return $conversation->includesUser($user->id);
+    }
+}<?php
+// routes/channels.php
+
+use App\Broadcasting\Messaging\ConversationChannel;
+use Illuminate\Support\Facades\Broadcast;
+
+Broadcast::channel('conversation.{conversationUuid}', ConversationChannel::class);<?php
+// app/Services/Messaging/ConversationService.php
+
+namespace App\Services\Messaging;
+
+use App\Enums\Messaging\MessageType;
+use App\Events\Messaging\MessageSent;
+use App\Models\Agent\Agent;
+use App\Models\Auth\User;
+use App\Models\Messaging\Conversation;
+use App\Models\Messaging\Message;
+use App\Models\TravelService\TravelService;
+use App\Repositories\Contracts\Messaging\ConversationRepositoryInterface;
+use App\Repositories\Contracts\Messaging\MessageRepositoryInterface;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+
+class ConversationService
+{
+    public function __construct(
+        private ConversationRepositoryInterface $conversations,
+        private MessageRepositoryInterface $messages,
+    ) {}
+
+    /**
+     * Open (or reuse) a conversation between the logged-in customer and a target agent.
+     * Returns the conversation and whether it was newly created.
+     *
+     * @return array{conversation: Conversation, created: bool}
+     */
+    public function openConversation(User $customer, string $agentUuid, ?string $serviceUuid): array
+    {
+        $agent = Agent::with(['user', 'profile'])->where('uuid', $agentUuid)->first();
+        if (! $agent) {
+            throw new UnprocessableEntityHttpException('Agent not found.');
+        }
+        if ($agent->user_id === $customer->id) {
+            throw new UnprocessableEntityHttpException('You cannot open a conversation with yourself.');
+        }
+
+        $service = null;
+        if ($serviceUuid) {
+            $service = TravelService::where('uuid', $serviceUuid)->first();
+            if (! $service || $service->agent_id !== $agent->id) {
+                throw new UnprocessableEntityHttpException('Service does not belong to this agent.');
+            }
+        }
+
+        $existing = $this->conversations->findBetweenCustomerAndAgent($customer->id, $agent->id);
+        if ($existing) {
+            if ($service && $existing->travel_service_id !== $service->id) {
+                $existing->forceFill(['travel_service_id' => $service->id])->save();
+            }
+            return ['conversation' => $this->conversations->findForUser($existing->uuid, $customer), 'created' => false];
+        }
+
+        $conversation = DB::transaction(function () use ($customer, $agent, $service) {
+            $conv = $this->conversations->create([
+                'type' => 'customer_agent',
+                'customer_id' => $customer->id,
+                'agent_id' => $agent->id,
+                'travel_service_id' => $service?->id,
+                'last_message_at' => null,
+            ]);
+
+            $conv->participants()->createMany([
+                ['user_id' => $customer->id, 'last_read_at' => now()],
+                ['user_id' => $agent->user_id, 'last_read_at' => null],
+            ]);
+
+            return $conv;
+        });
+
+        return ['conversation' => $this->conversations->findForUser($conversation->uuid, $customer), 'created' => true];
+    }
+
+    public function list(User $user, array $filters): LengthAwarePaginator
+    {
+        return $this->conversations->paginateForUser($user, $filters);
+    }
+
+    public function show(User $user, string $uuid): Conversation
+    {
+        $conversation = $this->conversations->findForUser($uuid, $user);
+        if (! $conversation) {
+            throw new AccessDeniedHttpException('Conversation not found or not yours.');
+        }
+        return $conversation;
+    }
+
+    public function listMessages(User $user, string $uuid, array $filters): LengthAwarePaginator
+    {
+        $conversation = $this->show($user, $uuid);
+
+        // opening the message list marks as read
+        $this->messages->markConversationRead($conversation, $user->id);
+
+        return $this->messages->paginateForConversation($conversation, $filters);
+    }
+
+    public function sendMessage(User $user, string $uuid, string $body, array $meta = []): Message
+    {
+        $conversation = $this->show($user, $uuid);
+
+        if (trim($body) === '') {
+            throw new UnprocessableEntityHttpException('Message body is required.');
+        }
+        if (mb_strlen($body) > 4000) {
+            throw new UnprocessableEntityHttpException('Message is too long.');
+        }
+
+        $message = DB::transaction(function () use ($conversation, $user, $body, $meta) {
+            $message = $this->messages->create([
+                'conversation_id' => $conversation->id,
+                'sender_id' => $user->id,
+                'type' => MessageType::TEXT->value,
+                'body' => trim($body),
+                'meta' => $meta ?: null,
+            ]);
+
+            $this->conversations->touchLastMessage($conversation);
+
+            // sender's own read pointer advances
+            $conversation->participants()
+                ->where('user_id', $user->id)
+                ->update(['last_read_at' => now()]);
+
+            return $message->load(['sender', 'conversation']);
+        });
+
+        broadcast(new MessageSent($message))->toOthers();
+
+        return $message;
+    }
+
+    public function markRead(User $user, string $uuid): void
+    {
+        $conversation = $this->show($user, $uuid);
+        $this->messages->markConversationRead($conversation, $user->id);
+    }
+
+    public function unreadCount(User $user, string $uuid): int
+    {
+        $conversation = $this->show($user, $uuid);
+        return $this->messages->unreadCount($conversation, $user->id);
+    }
+}<?php
+// app/Http/Requests/Messaging/StartConversationRequest.php
+
+namespace App\Http\Requests\Messaging;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class StartConversationRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'agent_uuid' => ['required', 'string', 'uuid'],
+            'service_uuid' => ['sometimes', 'nullable', 'string', 'uuid'],
+        ];
+    }
+}<?php
+// app/Http/Requests/Messaging/SendMessageRequest.php
+
+namespace App\Http\Requests\Messaging;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class SendMessageRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    public function rules(): array
+    {
+        return [
+            'body' => ['required', 'string', 'min:1', 'max:4000'],
+            'meta' => ['sometimes', 'nullable', 'array'],
+        ];
+    }
+}<?php
+// app/Http/Resources/Messaging/MessageResource.php
+
+namespace App\Http\Resources\Messaging;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class MessageResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'uuid' => $this->uuid,
+            'type' => $this->type?->value,
+            'body' => $this->body,
+            'meta' => $this->meta,
+            'sender' => [
+                'id' => $this->sender_id,
+                'name' => $this->sender?->name,
+            ],
+            'read_at' => $this->read_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+}<?php
+// app/Http/Resources/Messaging/ConversationResource.php
+
+namespace App\Http\Resources\Messaging;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class ConversationResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        $user = $request->user();
+        $isCustomer = $user && $this->customer_id === $user->id;
+
+        $peer = $isCustomer
+            ? [
+                'role' => 'agent',
+                'uuid' => $this->agentRecord?->uuid,
+                'name' => $this->agentRecord?->user?->name,
+                'agency_name' => $this->agentRecord?->profile?->agency_name,
+                'photo_url' => null,
+            ]
+            : [
+                'role' => 'customer',
+                'uuid' => $this->customer?->uuid,
+                'name' => $this->customer?->name,
+                'agency_name' => null,
+                'photo_url' => null,
+            ];
+
+        $last = $this->lastMessage;
+
+        return [
+            'uuid' => $this->uuid,
+            'peer' => $peer,
+            'travel_service' => $this->travelService ? [
+                'uuid' => $this->travelService->uuid,
+                'title' => $this->travelService->title,
+            ] : null,
+            'last_message' => $last ? [
+                'uuid' => $last->uuid,
+                'preview' => mb_substr((string) $last->body, 0, 120),
+                'sender_id' => $last->sender_id,
+                'created_at' => $last->created_at?->toIso8601String(),
+            ] : null,
+            'last_message_at' => $this->last_message_at?->toIso8601String(),
+            'unread_count' => 0, // filled by controller when needed
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+}<?php
+// app/Http/Controllers/Messaging/ConversationController.php
+
+namespace App\Http\Controllers\Messaging;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Messaging\SendMessageRequest;
+use App\Http\Requests\Messaging\StartConversationRequest;
+use App\Http\Resources\Messaging\ConversationResource;
+use App\Http\Resources\Messaging\MessageResource;
+use App\Repositories\Contracts\Messaging\MessageRepositoryInterface;
+use App\Services\Messaging\ConversationService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class ConversationController extends Controller
+{
+    public function __construct(
+        private ConversationService $service,
+        private MessageRepositoryInterface $messages,
+    ) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $paginator = $this->service->list($request->user(), $request->only(['search', 'per_page']));
+
+        $paginator->through(function ($conversation) use ($request) {
+            $conversation->unread_count = $this->messages->unreadCount($conversation, $request->user()->id);
+            return $conversation;
+        });
+
+        return ConversationResource::collection($paginator)->response();
+    }
+
+    public function start(StartConversationRequest $request): JsonResponse
+    {
+        $result = $this->service->openConversation(
+            $request->user(),
+            (string) $request->string('agent_uuid'),
+            $request->input('service_uuid') ? (string) $request->input('service_uuid') : null,
+        );
+
+        $conversation = $result['conversation'];
+        $conversation->unread_count = $this->messages->unreadCount($conversation, $request->user()->id);
+
+        return (new ConversationResource($conversation))
+            ->additional(['created' => $result['created']])
+            ->response()
+            ->setStatusCode($result['created'] ? 201 : 200);
+    }
+
+    public function show(Request $request, string $uuid): JsonResponse
+    {
+        $conversation = $this->service->show($request->user(), $uuid);
+        $conversation->unread_count = $this->messages->unreadCount($conversation, $request->user()->id);
+
+        return (new ConversationResource($conversation))->response();
+    }
+
+    public function messages(Request $request, string $uuid): JsonResponse
+    {
+        $paginator = $this->service->listMessages(
+            $request->user(),
+            $uuid,
+            $request->only(['per_page']),
+        );
+
+        return MessageResource::collection($paginator)->response();
+    }
+
+    public function send(SendMessageRequest $request, string $uuid): JsonResponse
+    {
+        $message = $this->service->sendMessage(
+            $request->user(),
+            $uuid,
+            (string) $request->string('body'),
+            (array) ($request->input('meta') ?? []),
+        );
+
+        return (new MessageResource($message))->response()->setStatusCode(201);
+    }
+
+    public function markRead(Request $request, string $uuid): JsonResponse
+    {
+        $this->service->markRead($request->user(), $uuid);
+
+        return response()->json(['message' => 'Conversation marked as read.']);
+    }
+
+    public function unread(Request $request, string $uuid): JsonResponse
+    {
+        return response()->json([
+            'unread' => $this->service->unreadCount($request->user(), $uuid),
+        ]);
+    }
+}<?php
+// routes/messaging.php
+
+use App\Http\Controllers\Messaging\ConversationController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('conversations', [ConversationController::class, 'index'])
+        ->middleware('throttle:messaging-list');
+    Route::post('conversations', [ConversationController::class, 'start'])
+        ->middleware('throttle:messaging-start');
+    Route::get('conversations/{uuid}', [ConversationController::class, 'show'])
+        ->middleware('throttle:messaging-list');
+    Route::get('conversations/{uuid}/messages', [ConversationController::class, 'messages'])
+        ->middleware('throttle:messaging-list');
+    Route::post('conversations/{uuid}/messages', [ConversationController::class, 'send'])
+        ->middleware('throttle:messaging-send');
+    Route::post('conversations/{uuid}/read', [ConversationController::class, 'markRead'])
+        ->middleware('throttle:messaging-list');
+    Route::get('conversations/{uuid}/unread', [ConversationController::class, 'unread'])
+        ->middleware('throttle:messaging-list');
+});
+            // Module 06
+            Route::middleware('api')
+                ->prefix('api/messaging')
+                ->group(base_path('routes/messaging.php'));       // MODULE 06 Messaging Rate limits
+                RateLimiter::for('messaging-list', fn (Request $r) => Limit::perMinute(120)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-start', fn (Request $r) => Limit::perHour(30)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-send', fn (Request $r) => Limit::perMinute(30)->by($r->user()?->id ?? $r->ip()));
+   <?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Broadcaster
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the default broadcaster that will be used by the
+    | framework when an event needs to be broadcast. You may set this to
+    | any of the connections defined in the "connections" array below.
+    |
+    | Supported: "reverb", "pusher", "ably", "redis", "log", "null"
+    |
+    */
+
+    'default' => env('BROADCAST_CONNECTION', 'null'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Broadcast Connections
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define all of the broadcast connections that will be used
+    | to broadcast events to other systems or over WebSockets. Samples of
+    | each available type of connection are provided inside this array.
+    |
+    */
+
+    'connections' => [
+
+        'reverb' => [
+            'driver' => 'reverb',
+            'key' => env('REVERB_APP_KEY'),
+            'secret' => env('REVERB_APP_SECRET'),
+            'app_id' => env('REVERB_APP_ID'),
+            'options' => [
+                'host' => env('REVERB_HOST'),
+                'port' => env('REVERB_PORT', 443),
+                'scheme' => env('REVERB_SCHEME', 'https'),
+                'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+            ],
+            'client_options' => [
+                // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+            ],
+        ],
+
+        'pusher' => [
+            'driver' => 'pusher',
+            'key' => env('PUSHER_APP_KEY'),
+            'secret' => env('PUSHER_APP_SECRET'),
+            'app_id' => env('PUSHER_APP_ID'),
+            'options' => [
+                'cluster' => env('PUSHER_APP_CLUSTER'),
+                'host' => env('PUSHER_HOST') ?: 'api-'.env('PUSHER_APP_CLUSTER', 'mt1').'.pusher.com',
+                'port' => env('PUSHER_PORT', 443),
+                'scheme' => env('PUSHER_SCHEME', 'https'),
+                'encrypted' => true,
+                'useTLS' => env('PUSHER_SCHEME', 'https') === 'https',
+            ],
+            'client_options' => [
+                // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+            ],
+        ],
+
+        'ably' => [
+            'driver' => 'ably',
+            'key' => env('ABLY_KEY'),
+        ],
+
+        'log' => [
+            'driver' => 'log',
+        ],
+
+        'null' => [
+            'driver' => 'null',
+        ],
+
+    ],
+
+];
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Reverb Server
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the default server used by Reverb to handle
+    | incoming messages as well as broadcasting message to all your
+    | connected clients. At this time only "reverb" is supported.
+    |
+    */
+
+    'default' => env('REVERB_SERVER', 'reverb'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reverb Servers
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define details for each of the supported Reverb servers.
+    | Each server has its own configuration options that are defined in
+    | the array below. You should ensure all the options are present.
+    |
+    */
+
+    'servers' => [
+
+        'reverb' => [
+            'host' => env('REVERB_SERVER_HOST', '0.0.0.0'),
+            'port' => env('REVERB_SERVER_PORT', 8080),
+            'path' => env('REVERB_SERVER_PATH', ''),
+            'hostname' => env('REVERB_HOST'),
+            'options' => [
+                'tls' => [],
+            ],
+            'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10_000),
+            'scaling' => [
+                'enabled' => env('REVERB_SCALING_ENABLED', false),
+                'channel' => env('REVERB_SCALING_CHANNEL', 'reverb'),
+                'server' => [
+                    'url' => env('REDIS_URL'),
+                    'host' => env('REDIS_HOST', '127.0.0.1'),
+                    'port' => env('REDIS_PORT', '6379'),
+                    'username' => env('REDIS_USERNAME'),
+                    'password' => env('REDIS_PASSWORD'),
+                    'database' => env('REDIS_DB', '0'),
+                    'timeout' => env('REDIS_TIMEOUT', 60),
+                ],
+            ],
+            'pulse_ingest_interval' => env('REVERB_PULSE_INGEST_INTERVAL', 15),
+            'telescope_ingest_interval' => env('REVERB_TELESCOPE_INGEST_INTERVAL', 15),
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reverb Applications
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define how Reverb applications are managed. If you choose
+    | to use the "config" provider, you may define an array of apps which
+    | your server will support, including their connection credentials.
+    |
+    */
+
+    'apps' => [
+
+        'provider' => 'config',
+
+        'apps' => [
+            [
+                'key' => env('REVERB_APP_KEY'),
+                'secret' => env('REVERB_APP_SECRET'),
+                'app_id' => env('REVERB_APP_ID'),
+                'options' => [
+                    'host' => env('REVERB_HOST'),
+                    'port' => env('REVERB_PORT', 443),
+                    'scheme' => env('REVERB_SCHEME', 'https'),
+                    'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+                ],
+                'allowed_origins' => ['*'],
+                'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
+                'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
+                'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),
+                'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
+                'accept_client_events_from' => env('REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM', 'members'),
+                'rate_limiting' => [
+                    'enabled' => env('REVERB_APP_RATE_LIMITING_ENABLED', false),
+                    'max_attempts' => env('REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS', 60),
+                    'decay_seconds' => env('REVERB_APP_RATE_LIMIT_DECAY_SECONDS', 60),
+                    'terminate_on_limit' => env('REVERB_APP_RATE_LIMIT_TERMINATE', false),
+                ],
+            ],
+        ],
+
+    ],
+
+];

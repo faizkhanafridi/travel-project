@@ -52,5 +52,15 @@ class RepositoryServiceProvider extends ServiceProvider
             \App\Repositories\Contracts\Marketplace\MarketplaceRepositoryInterface::class,
             \App\Repositories\Eloquent\Marketplace\MarketplaceRepository::class,
         );
+
+        // Module 06
+        $this->app->bind(
+            \App\Repositories\Contracts\Messaging\ConversationRepositoryInterface::class,
+            \App\Repositories\Eloquent\Messaging\ConversationRepository::class,
+        );
+        $this->app->bind(
+            \App\Repositories\Contracts\Messaging\MessageRepositoryInterface::class,
+            \App\Repositories\Eloquent\Messaging\MessageRepository::class,
+        );
     }
 }
