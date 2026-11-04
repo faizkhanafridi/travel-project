@@ -51,6 +51,11 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::middleware('api')
                 ->prefix('api/messaging')
                 ->group(base_path('routes/messaging.php'));
+
+            // Module 07
+            Route::middleware('api')
+                ->prefix('api/travel-post')
+                ->group(base_path('routes/travel-post.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

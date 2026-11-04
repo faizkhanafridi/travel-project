@@ -62,5 +62,20 @@ class RepositoryServiceProvider extends ServiceProvider
             \App\Repositories\Contracts\Messaging\MessageRepositoryInterface::class,
             \App\Repositories\Eloquent\Messaging\MessageRepository::class,
         );
+
+
+        // Module 07
+        $this->app->bind(
+            \App\Repositories\Contracts\TravelPost\TravelPostRepositoryInterface::class,
+            \App\Repositories\Eloquent\TravelPost\TravelPostRepository::class,
+        );
+        $this->app->bind(
+            \App\Repositories\Contracts\TravelPost\OfferRepositoryInterface::class,
+            \App\Repositories\Eloquent\TravelPost\OfferRepository::class,
+        );
+        $this->app->bind(
+            \App\Repositories\Contracts\TravelPost\ConnectRepositoryInterface::class,
+            \App\Repositories\Eloquent\TravelPost\ConnectRepository::class,
+        );
     }
 }

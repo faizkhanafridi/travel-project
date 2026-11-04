@@ -11,6 +11,9 @@ import {
   Compass,
   ListChecks,
   MessageCircle,
+  ListOrdered,
+  Inbox,
+  Wallet,
 } from "lucide-react";
 
 import { useAuthStore } from "../../stores/authStore";
@@ -71,7 +74,7 @@ export default function Navbar() {
                 Become an Agent
               </Link>
             )}
-            
+
             <Link
               to="/marketplace"
               className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100"
@@ -79,15 +82,24 @@ export default function Navbar() {
               <Compass className="w-4 h-4" />
               Marketplace
             </Link>
+            <Link
+              to="/travel-posts"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              <ListOrdered className="w-4 h-4" />
+              Travel posts
+            </Link>
+
+            <MenuLink
+              to="/messages"
+              icon={MessageCircle}
+              onClick={() => setOpen(false)}
+            >
+              Messages
+            </MenuLink>
 
             <CurrencySwitcher />
-              <MenuLink
-                to="/messages"
-                icon={MessageCircle}
-                onClick={() => setOpen(false)}
-              >
-                Messages
-              </MenuLink>
+
             <div className="relative" ref={ref}>
               <button
                 type="button"
@@ -102,7 +114,7 @@ export default function Navbar() {
                 </span>
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               </button>
-            
+
               {open && (
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg py-1 animate-fade-in">
                   <div className="px-4 py-2 border-b border-slate-100">
@@ -121,14 +133,47 @@ export default function Navbar() {
                     My profile
                   </MenuLink>
 
-                  {user?.is_agent && (
-                    <Link
-                      to="/services/mine"
-                      className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  {user.is_customer && !user?.is_agent &&  (
+                    <MenuLink
+                      to="/my-travel-posts"
+                      icon={Inbox}
+                      onClick={() => setOpen(false)}
                     >
-                      <ListChecks className="w-4 h-4" />
-                      My services
-                    </Link>
+                      My travel posts
+                    </MenuLink>
+                  )}
+                  {user?.is_agent && (
+                    <>
+                      <MenuLink
+                        to="/my-offers"
+                        icon={Inbox}
+                        onClick={() => setOpen(false)}
+                      >
+                        My offers
+                      </MenuLink>
+                      <MenuLink
+                        to="/agent/service-requests"
+                        icon={Inbox}
+                        onClick={() => setOpen(false)}
+                      >
+                        Service requests
+                      </MenuLink>
+                      <MenuLink
+                        to="/connects"
+                        icon={Wallet}
+                        onClick={() => setOpen(false)}
+                      >
+                        Connects
+                      </MenuLink>
+
+                      <Link
+                        to="/services/mine"
+                        className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        <ListChecks className="w-4 h-4" />
+                        My services
+                      </Link>
+                    </>
                   )}
 
                   {user.is_super_admin && (

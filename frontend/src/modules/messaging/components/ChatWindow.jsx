@@ -23,7 +23,7 @@ export default function ChatWindow({ uuid, onBack }) {
     .slice()
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   const peer = conversation?.peer;
-  console.log(peer)
+  console.log(peer);
   useEffect(() => {
     if (!uuid) return;
     messagingService.markRead(uuid).catch(() => {});
@@ -50,7 +50,8 @@ export default function ChatWindow({ uuid, onBack }) {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-50 h-full">
       {/* Header */}
-      <div className="flex-1 min-w-0">
+      {/* <div className="flex-1 min-w-0"> */}
+      <div className="px-4 py-3 border-b border-slate-200 bg-white flex items-center gap-2 shrink-0">
         {peer?.uuid ? (
           <Link
             to={
@@ -74,7 +75,7 @@ export default function ChatWindow({ uuid, onBack }) {
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-2"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-2 min-h-0"
       >
         {isLoading ? (
           <div className="text-center text-sm text-slate-400 py-6">

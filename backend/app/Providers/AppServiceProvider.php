@@ -78,8 +78,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('marketplace-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
 
         // MODULE 06 Messaging Rate limits
-                RateLimiter::for('messaging-list', fn (Request $r) => Limit::perMinute(120)->by($r->user()?->id ?? $r->ip()));
-        RateLimiter::for('messaging-start', fn (Request $r) => Limit::perHour(30)->by($r->user()?->id ?? $r->ip()));
-        RateLimiter::for('messaging-send', fn (Request $r) => Limit::perMinute(30)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-list', fn(Request $r) => Limit::perMinute(120)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-start', fn(Request $r) => Limit::perHour(30)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('messaging-send', fn(Request $r) => Limit::perMinute(30)->by($r->user()?->id ?? $r->ip()));
+
+
+        // MODULE 07 Travel Posts/Requests Rate limits
+        RateLimiter::for('travel-post-public', fn(Request $r) => Limit::perMinute(120)->by($r->ip()));
+        RateLimiter::for('travel-post-create', fn(Request $r) => Limit::perHour(20)->by($r->user()?->id ?? $r->ip()));
+        RateLimiter::for('travel-post-offer', fn(Request $r) => Limit::perHour(40)->by($r->user()?->id ?? $r->ip()));
     }
 }

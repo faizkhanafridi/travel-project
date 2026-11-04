@@ -6,7 +6,7 @@ import {
   CheckCircle2,
   Tag,
   CalendarDays,
-  MessageCircle 
+  MessageCircle,
 } from "lucide-react";
 import Navbar from "../../../components/layout/Navbar";
 import FullPageLoader from "../../../components/ui/FullPageLoader";
@@ -15,6 +15,8 @@ import { usePublicService } from "../hooks/useService";
 import { useAuthStore } from "../../../stores/authStore";
 import { useStartConversation } from "../../messaging/hooks/useMessaging";
 import { useNavigate } from "react-router-dom";
+import RequestTripModal from "../../travel-posts/components/RequestTripModal";
+import { useState } from "react";
 
 export default function ServiceDetailPage() {
   const { uuid } = useParams();
@@ -27,7 +29,7 @@ export default function ServiceDetailPage() {
   const isOwnerAgent =
     !!user?.is_agent && !!s?.agent && user?.agent_uuid === s.agent.uuid;
   console.log(isOwnerAgent);
-
+  const [requestTripOpen, setRequestTripOpen] = useState(false);
   const messageAgent = async () => {
     if (!s?.agent?.uuid) return;
     try {
@@ -262,22 +264,42 @@ export default function ServiceDetailPage() {
                   </p>
 
                   {!isAdmin && !isOwnerAgent && s.agent && (
-                    <button
-                      type="button"
-                      onClick={messageAgent}
-                      disabled={start.isPending}
-                      className="mt-3 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      Message this agent
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={messageAgent}
+                        disabled={start.isPending}
+                        className="mt-3 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Message this agent
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRequestTripOpen(true)}
+                        className="mt-2 w-full inline-flex justify-center items-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Request custom trip
+                      </button>
+                    </>
                   )}
                 </>
-              )}
+              )}  
             </div>
           </div>
         </div>
       </main>
+
+      {requestTripOpen && (
+        <RequestTripModal
+          service={s}
+          onClose={() => setRequestTripOpen(false)}
+          onCreated={(post) => {
+            setRequestTripOpen(false);
+            navigate(`/travel-posts/${post.uuid}`);
+          }}
+        />
+      )}
     </div>
   );
 }

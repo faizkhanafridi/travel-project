@@ -70,11 +70,14 @@ class AgentReviewService
 
             // TEMPORARY: award 200 connects once on first approval.
             // This entire block must be removed when Finance module ships.
+            // if (! $updated->connects_awarded) {
+            //     $this->agents->update($updated, [
+            //         'connects_balance' => $updated->connects_balance + self::INITIAL_CONNECTS_AWARD,
+            //         'connects_awarded' => true,
+            //     ]);
+            // }
             if (! $updated->connects_awarded) {
-                $this->agents->update($updated, [
-                    'connects_balance' => $updated->connects_balance + self::INITIAL_CONNECTS_AWARD,
-                    'connects_awarded' => true,
-                ]);
+                app(\App\Services\TravelPost\ConnectService::class)->grantInitialIfNeeded($updated);
             }
 
             $updated->submissionHistory()->create([

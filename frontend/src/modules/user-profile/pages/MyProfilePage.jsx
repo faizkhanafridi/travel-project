@@ -142,18 +142,14 @@ export default function MyProfilePage() {
               <p className="text-sm font-semibold text-slate-900">
                 Account status
               </p>
-              <p className="text-sm text-slate-600 capitalize mt-0.5">
-                {/* {user?.is_customer && !user?.is_agent && (
-                  <>{profile?.account_status || "customer"} .</>
-                )}
-                 */}
+
                 <p className="text-sm text-slate-600 capitalize mt-0.5">
                   {profile?.account_status || "customer"} · Member since{" "}
                   {user?.member_since
                     ? new Date(user.member_since).toLocaleDateString()
                     : "—"}
                 </p>
-              </p>
+              
             </div>
             {user?.is_customer && !user?.is_agent && (
               <button

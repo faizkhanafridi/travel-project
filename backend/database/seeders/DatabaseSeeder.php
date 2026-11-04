@@ -5,6 +5,7 @@ namespace Database\Seeders;
 
 use Database\Seeders\Auth\RoleSeeder;
 use Database\Seeders\Auth\SuperAdminSeeder;
+use Database\Seeders\TravelPost\ConnectPackageSeeder;
 use Database\Seeders\TravelService\ServiceCategorySeeder;
 use Illuminate\Database\Seeder;
 
@@ -17,6 +18,8 @@ class DatabaseSeeder extends Seeder
             SuperAdminSeeder::class,
 
             ServiceCategorySeeder::class,
+            ConnectPackageSeeder::class,
+
         ]);
     }
 }

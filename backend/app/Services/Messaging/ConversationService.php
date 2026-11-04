@@ -134,7 +134,36 @@ class ConversationService
 
         return $message;
     }
+    /**
+     * Inserts a system message into an existing conversation (used by cross-module flows).
+     * Does not advance the sender's read pointer, does not broadcast to the sender.
+     *
+     * @param array<string, mixed> $meta
+     */
+    public function postSystemMessage(
+        \App\Models\Messaging\Conversation $conversation,
+        \App\Models\Auth\User $actor,
+        string $body,
+        array $meta = [],
+    ): \App\Models\Messaging\Message {
+        $message = DB::transaction(function () use ($conversation, $actor, $body, $meta) {
+            $message = $this->messages->create([
+                'conversation_id' => $conversation->id,
+                'sender_id' => $actor->id,
+                'type' => MessageType::SYSTEM->value,
+                'body' => $body,
+                'meta' => $meta ?: null,
+            ]);
 
+            $this->conversations->touchLastMessage($conversation);
+
+            return $message->load(['sender', 'conversation']);
+        });
+
+        broadcast(new MessageSent($message))->toOthers();
+
+        return $message;
+    }
     public function markRead(User $user, string $uuid): void
     {
         $conversation = $this->show($user, $uuid);
@@ -145,5 +174,21 @@ class ConversationService
     {
         $conversation = $this->show($user, $uuid);
         return $this->messages->unreadCount($conversation, $user->id);
+    }
+
+
+    public function openConversationByAgent(User $customer, int $agentId, ?int $serviceId = null): Conversation
+    {
+        $agent = \App\Models\Agent\Agent::where('id', $agentId)->first();
+        if (! $agent) {
+            throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException('Agent not found.');
+        }
+        $serviceUuid = null;
+        if ($serviceId) {
+            $service = \App\Models\TravelService\TravelService::where('id', $serviceId)->first();
+            $serviceUuid = $service?->uuid;
+        }
+        $result = $this->openConversation($customer, $agent->uuid, $serviceUuid);
+        return $result['conversation'];
     }
 }

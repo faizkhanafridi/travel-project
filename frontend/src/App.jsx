@@ -45,6 +45,13 @@ import AdminServiceReviewPage from "./modules/travel-services/pages/admin/AdminS
 import MarketplacePage from "./modules/marketplace/pages/MarketplacePage";
 import MessagingPage from "./modules/messaging/pages/MessagingPage";
 
+import GlobalPostsPage from "./modules/travel-posts/pages/GlobalPostsPage";
+import TravelPostDetailPage from "./modules/travel-posts/pages/TravelPostDetailPage";
+import MyTravelPostsPage from "./modules/travel-posts/pages/MyTravelPostsPage";
+import MyOffersPage from "./modules/travel-posts/pages/MyOffersPage";
+import AgentServiceRequestsPage from "./modules/travel-posts/pages/AgentServiceRequestsPage";
+import ConnectsPage from "./modules/travel-posts/components/ConnectsPage";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -265,7 +272,49 @@ export default function App() {
             }
           />
 
+          <Route
+            path="/my-travel-posts"
+            element={
+              <ProtectedRoute>
+                <MyTravelPostsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/my-offers"
+            element={
+              <ProtectedRoute>
+                <MyOffersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/agent/service-requests"
+            element={
+              <ProtectedRoute>
+                <AgentServiceRequestsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/connects"
+            element={
+              <ProtectedRoute>
+                <ConnectsPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="/marketplace" element={<MarketplacePage />} />
+
+          <Route path="/travel-posts" element={<GlobalPostsPage />} />
+          <Route
+            path="/travel-posts/:uuid"
+            element={<TravelPostDetailPage />}
+          />
 
           {/* Admin */}
           <Route
